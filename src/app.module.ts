@@ -1,0 +1,29 @@
+import { Module } from "@nestjs/common";
+import { ConfigModule } from "@nestjs/config";
+import { AuthModule } from "./auth/auth.module";
+import { ChatModule } from "./chat/chat.module";
+import { CrudModule } from "./crud/crud.module";
+import { DashboardModule } from "./dashboard/dashboard.module";
+import { DbModule } from "./db/db.module";
+import { HealthController } from "./health.controller";
+import { TenantModule } from "./tenant/tenant.module";
+import { UploadsModule } from "./uploads/uploads.module";
+import { WorkflowsModule } from "./workflows/workflows.module";
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    DbModule,
+    AuthModule,
+    TenantModule,
+    ChatModule,
+    // NOTE: specific routes (uploads, dashboard, shipment/packing workflows)
+    // must register before the generic /api/:tenant/:resource catch-all.
+    UploadsModule,
+    DashboardModule,
+    WorkflowsModule,
+    CrudModule,
+  ],
+  controllers: [HealthController],
+})
+export class AppModule {}
