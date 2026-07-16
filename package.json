@@ -12,6 +12,7 @@
     "db:push": "drizzle-kit push",
     "db:migrate": "ts-node -r tsconfig-paths/register scripts/migrate.ts",
     "db:seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
+    "user:create": "ts-node -r tsconfig-paths/register scripts/create-user.ts",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit"
   },

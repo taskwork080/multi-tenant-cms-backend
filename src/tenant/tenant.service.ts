@@ -133,6 +133,12 @@ export class TenantService {
     return dto;
   }
 
+  async byId(id: string): Promise<TenantDto> {
+    const [row] = await this.tdb.raw.select().from(tenants).where(eq(tenants.id, id)).limit(1);
+    if (!row) throw new NotFoundException(`Unknown tenant "${id}"`);
+    return this.toDto(row, await this.loadEntitlements(row.id));
+  }
+
   invalidate(slug: string) {
     this.cache.delete(slug);
   }
