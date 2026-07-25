@@ -6,6 +6,7 @@ import { CrudModule } from "./crud/crud.module";
 import { DashboardModule } from "./dashboard/dashboard.module";
 import { DbModule } from "./db/db.module";
 import { HealthController } from "./health.controller";
+import { ProductsModule } from "./products/products.module";
 import { TenantModule } from "./tenant/tenant.module";
 import { UploadsModule } from "./uploads/uploads.module";
 import { WorkflowsModule } from "./workflows/workflows.module";
@@ -17,11 +18,14 @@ import { WorkflowsModule } from "./workflows/workflows.module";
     AuthModule,
     TenantModule,
     ChatModule,
-    // NOTE: specific routes (uploads, dashboard, shipment/packing workflows)
-    // must register before the generic /api/:tenant/:resource catch-all.
+    // NOTE: specific routes (uploads, dashboard, product import, shipment/packing
+    // workflows) must register before the generic /api/:tenant/:resource
+    // catch-all — otherwise e.g. GET products/import/template is swallowed by
+    // CrudController's @Get(":id").
     UploadsModule,
     DashboardModule,
     WorkflowsModule,
+    ProductsModule,
     CrudModule,
   ],
   controllers: [HealthController],

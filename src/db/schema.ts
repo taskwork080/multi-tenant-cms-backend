@@ -9,6 +9,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 // ---------------------------------------------------------------------------
@@ -135,17 +136,34 @@ export const products = pgTable(
     slug: text("slug").notNull(),
     shortDescEn: text("short_desc_en"),
     shortDescBn: text("short_desc_bn"),
+    /** Long-form copy shown on the product detail page (wizard step 2). */
+    descriptionEn: text("description_en"),
     categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }),
+    /** A category whose parent is category_id — sub-categories are nested categories. */
+    subCategoryId: uuid("sub_category_id").references((): AnyPgColumn => categories.id, { onDelete: "set null" }),
     brandId: uuid("brand_id").references(() => brands.id, { onDelete: "set null" }),
-    sellerId: uuid("seller_id"),
+    // Lazy reference: sellers is declared further down this file.
+    sellerId: uuid("seller_id").references((): AnyPgColumn => sellers.id, { onDelete: "set null" }),
+    countryOrigin: text("country_origin"),
+    /** Regular price. The active price is offer_price when set, else this. */
     price: numeric("price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+    offerPrice: numeric("offer_price", { precision: 12, scale: 2, mode: "number" }),
     unit: text("unit").notNull().default("pcs"), // g | kg | ml | l | pcs
+    minOrderQty: integer("min_order_qty").notNull().default(1),
+    maxOrderQty: integer("max_order_qty"),
+    /** always = never out of stock; tracked = `stock` is decremented per order. */
+    stockMode: text("stock_mode").notNull().default("tracked"), // always | tracked
     stock: integer("stock").notNull().default(0),
     imageUrl: text("image_url"),
+    videoUrl: text("video_url"),
     status: text("status").notNull().default("draft"), // active | draft
     ...timestamps,
   },
-  (t) => [index("products_tenant_idx").on(t.tenantId), uniqueIndex("products_tenant_slug").on(t.tenantId, t.slug)],
+  (t) => [
+    index("products_tenant_idx").on(t.tenantId),
+    index("products_tenant_status_idx").on(t.tenantId, t.status),
+    uniqueIndex("products_tenant_slug").on(t.tenantId, t.slug),
+  ],
 );
 
 /** Gallery images (max 5 in the UI), ordered. */
@@ -176,6 +194,72 @@ export const productBadges = pgTable(
     sort: integer("sort").notNull().default(0),
   },
   (t) => [index("product_badges_product_idx").on(t.productId)],
+);
+
+/** Search keywords entered as chips in wizard step 2. */
+export const productTags = pgTable(
+  "product_tags",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    tag: text("tag").notNull(),
+    sort: integer("sort").notNull().default(0),
+  },
+  (t) => [index("product_tags_product_idx").on(t.productId)],
+);
+
+/** Key/value technical details rendered as a table on the product page. */
+export const productSpecs = pgTable(
+  "product_specs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    value: text("value").notNull().default(""),
+    sort: integer("sort").notNull().default(0),
+  },
+  (t) => [index("product_specs_product_idx").on(t.productId)],
+);
+
+/** Bulk-order pricing: the highest qualifying tier wins. */
+export const productPricingTiers = pgTable(
+  "product_pricing_tiers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    minQty: integer("min_qty").notNull().default(1),
+    unitPrice: numeric("unit_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+    sort: integer("sort").notNull().default(0),
+  },
+  (t) => [index("product_pricing_tiers_product_idx").on(t.productId)],
+);
+
+/** Selectable size/pack options; when present they replace the qty-pricing cards. */
+export const productVariants = pgTable(
+  "product_variants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    type: text("type").notNull().default("single"),
+    price: numeric("price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+    originalPrice: numeric("original_price", { precision: 12, scale: 2, mode: "number" }),
+    badge: text("badge"),
+    sort: integer("sort").notNull().default(0),
+  },
+  (t) => [index("product_variants_product_idx").on(t.productId)],
 );
 
 // --- Sales ---------------------------------------------------------------------

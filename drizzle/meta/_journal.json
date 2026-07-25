@@ -15,6 +15,20 @@
       "when": 1783878275564,
       "tag": "0001_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784963645430,
+      "tag": "0002_white_microbe",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784963811770,
+      "tag": "0003_products_rls",
+      "breakpoints": true
     }
   ]
 }

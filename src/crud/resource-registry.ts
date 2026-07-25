@@ -50,10 +50,17 @@ export const RESOURCES: Record<string, ResourceDef> = {
   products: {
     table: s.products,
     module: "products",
-    searchable: ["name_en", "slug", "style_code"],
+    searchable: ["name_en", "name_bn", "slug", "style_code"],
+    // All six child tables carry `sort`, which hydrateMany orders by and
+    // writeChildren rewrites from the array index — so array order round-trips
+    // and no explicit orderBy is needed.
     children: [
       { field: "images", table: s.productImages, fk: "productId", scalar: "url" },
       { field: "badges", table: s.productBadges, fk: "productId", scalar: "badge" },
+      { field: "tags", table: s.productTags, fk: "productId", scalar: "tag" },
+      { field: "specs", table: s.productSpecs, fk: "productId" },
+      { field: "pricingTiers", table: s.productPricingTiers, fk: "productId" },
+      { field: "variants", table: s.productVariants, fk: "productId" },
     ],
   },
   orders: {
