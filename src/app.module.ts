@@ -7,6 +7,7 @@ import { DashboardModule } from "./dashboard/dashboard.module";
 import { DbModule } from "./db/db.module";
 import { HealthController } from "./health.controller";
 import { ProductsModule } from "./products/products.module";
+import { SearchModule } from "./search/search.module";
 import { TenantModule } from "./tenant/tenant.module";
 import { UploadsModule } from "./uploads/uploads.module";
 import { WorkflowsModule } from "./workflows/workflows.module";
@@ -24,6 +25,7 @@ import { WorkflowsModule } from "./workflows/workflows.module";
     // CrudController's @Get(":id").
     UploadsModule,
     DashboardModule,
+    SearchModule,
     WorkflowsModule,
     ProductsModule,
     CrudModule,

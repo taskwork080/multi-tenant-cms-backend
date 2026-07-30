@@ -1,3 +1,4 @@
+import { sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import * as s from "../db/schema";
 
@@ -35,6 +36,13 @@ export interface ResourceDef {
   /** Default ordering DB column (descending). Falls back to created_at. */
   orderBy?: string;
   children?: ChildDef[];
+  /**
+   * Named boolean filters that can't be expressed as `?column=value` — most
+   * often a comparison between two columns. Enabled with `?<name>=true`.
+   * Keeps such predicates declared next to the resource instead of
+   * special-cased inside the list query.
+   */
+  flags?: Record<string, SQL>;
 }
 
 /**
@@ -69,7 +77,19 @@ export const RESOURCES: Record<string, ResourceDef> = {
     searchable: ["code", "customer_name"],
     children: [{ field: "items", table: s.orderItems, fk: "orderId" }],
   },
-  "stock-batches": { table: s.stockBatches, module: "inventory", searchable: ["product_name", "note"] },
+  "stock-batches": {
+    table: s.stockBatches,
+    module: "inventory",
+    searchable: ["product_name", "note"],
+    // quantity vs low_stock_threshold is a column-to-column comparison, so it
+    // can't be expressed as an ordinary `?column=value` filter.
+    flags: {
+      lowStock: sql`quantity <= low_stock_threshold and quantity > 0`,
+      outOfStock: sql`quantity = 0`,
+      /** Low *or* out — what the Topbar's stock alert badge counts. */
+      needsAttention: sql`quantity <= low_stock_threshold`,
+    },
+  },
   warehouses: {
     table: s.warehouses,
     module: "warehouses",

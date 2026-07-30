@@ -1,13 +1,20 @@
 import "reflect-metadata";
 import { Logger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { json, urlencoded } from "express";
 import { AppModule } from "./app.module";
 import { ZodExceptionFilter } from "./zod-exception.filter";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+
+  // Express 5 defaults the query parser to "simple" (Node's querystring), which
+  // leaves `?createdAt[gte]=…` as the literal key "createdAt[gte]". The CRUD
+  // list endpoint's range filters need the qs-based parser to see it as a
+  // nested object. Flat keys parse identically either way, so this is additive.
+  app.set("query parser", "extended");
 
   const origins = (process.env.CORS_ORIGIN ?? "http://localhost:5000").split(",").map((o) => o.trim());
   app.enableCors({ origin: origins, credentials: true });

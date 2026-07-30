@@ -12,6 +12,9 @@ const confirmSchema = z.object({
   signedBy: z.string().optional(),
   thirdPartyCarrier: z.string().optional(),
   thirdPartyNo: z.string().optional(),
+  /** Buyer details captured when adding straight into the shipment queue. */
+  customerName: z.string().optional(),
+  orderCode: z.string().optional(),
 });
 
 const shipEventSchema = z.object({
@@ -71,6 +74,8 @@ export class PackingController {
           signedAt: input.signedBy ? new Date() : row.signedAt,
           thirdPartyCarrier: input.thirdPartyCarrier ?? row.thirdPartyCarrier,
           thirdPartyNo: input.thirdPartyNo ?? row.thirdPartyNo,
+          customerName: input.customerName ?? row.customerName,
+          orderCode: input.orderCode ?? row.orderCode,
           updatedAt: new Date(),
         })
         .where(eq(packingLists.id, id))
