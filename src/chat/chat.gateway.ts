@@ -89,9 +89,23 @@ export class ChatGateway implements OnGatewayConnection {
   @SubscribeMessage("chat:send")
   async onSend(@ConnectedSocket() socket: Socket, @MessageBody() body: unknown) {
     const tenant = socket.data.tenant;
-    const input = sendSchema.parse(body);
-    const { conversationId, ...messageInput } = input;
+    const { conversationId, ...messageInput } = sendSchema.parse(body);
+    const result = await this.postMessage(tenant, conversationId, messageInput);
+    if (!result) return { error: "conversation not found" };
+    return { ok: true, message: result.message };
+  }
 
+  /**
+   * Persists one message on a conversation and broadcasts it. Shared by the
+   * `chat:send` socket event above and `POST /conversations/:id/messages`, so
+   * the two paths can't drift on unread semantics or room names. Returns null
+   * if the conversation doesn't belong to this tenant.
+   */
+  async postMessage(
+    tenant: { id: string; slug: string },
+    conversationId: string,
+    input: Omit<z.infer<typeof sendSchema>, "conversationId">,
+  ) {
     const result = await this.tdb.forTenant(tenant.id, async (tx) => {
       const [row] = await tx
         .select()
@@ -101,12 +115,13 @@ export class ChatGateway implements OnGatewayConnection {
       if (!row) return null;
       const [message] = await tx
         .insert(chatMessages)
-        .values({ tenantId: tenant.id, conversationId, ...messageInput })
+        .values({ tenantId: tenant.id, conversationId, ...input })
         .returning();
       const [updated] = await tx
         .update(conversations)
         .set({
           lastMessageAt: new Date(),
+          // A customer's message adds to the badge; ours means we're reading it.
           unread: input.sender === "customer" ? sql`${conversations.unread} + 1` : 0,
           updatedAt: new Date(),
         } as never)
@@ -114,19 +129,27 @@ export class ChatGateway implements OnGatewayConnection {
         .returning();
       return { message, updated };
     });
-    if (!result) return { error: "conversation not found" };
-    const { message, updated } = result;
+    if (!result) return null;
 
-    this.server
-      .to(`conv:${tenant.slug}:${input.conversationId}`)
-      .emit("chat:message", { conversationId: input.conversationId, message });
-    // list views (unread badges, ordering) listen at tenant level
-    this.server.to(`tenant:${tenant.slug}`).emit("chat:conversation", {
-      conversationId: input.conversationId,
-      lastMessageAt: updated.lastMessageAt,
-      unread: updated.unread,
+    this.emitConversation(tenant.slug, conversationId, result.updated);
+    this.server?.to(`conv:${tenant.slug}:${conversationId}`).emit("chat:message", {
+      conversationId,
+      message: result.message,
     });
-    return { ok: true, message };
+    return result;
+  }
+
+  /** List views (unread badges, ordering) listen at tenant level. */
+  emitConversation(
+    tenantSlug: string,
+    conversationId: string,
+    row: { lastMessageAt: Date; unread: number },
+  ) {
+    this.server?.to(`tenant:${tenantSlug}`).emit("chat:conversation", {
+      conversationId,
+      lastMessageAt: row.lastMessageAt,
+      unread: row.unread,
+    });
   }
 
   /** Called from REST controllers to push shipment timeline/chat updates. */

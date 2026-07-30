@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, NotFoundException, Post, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { products, stockBatches } from "../db/schema";
+import { products, stockBatches, warehouses } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import { CurrentTenant } from "../tenant/tenant.decorator";
 import { TenantGuard } from "../tenant/tenant.guard";
@@ -18,6 +18,18 @@ const adjustSchema = z.object({
       }),
     )
     .min(1),
+});
+
+const receiveSchema = z.object({
+  /** Top up this specific batch; otherwise the (product, warehouse) one. */
+  batchId: z.string().uuid().optional(),
+  productId: z.string().uuid(),
+  warehouseId: z.string().uuid(),
+  quantity: z.number().int().positive(),
+  expiryDate: z.string().optional(),
+  lowStockThreshold: z.number().int().nonnegative().optional(),
+  photoUrl: z.string().optional(),
+  note: z.string().optional(),
 });
 
 const DEFAULT_LOW_STOCK_THRESHOLD = 10;
@@ -124,6 +136,88 @@ export class InventoryController {
       }
 
       return { warnings };
+    });
+  }
+
+  @Post("receive")
+  @ApiOperation({
+    summary: "Receive stock into a batch",
+    description:
+      "Tops up the matching batch (or creates one) and mirrors the increase onto products.stock, in one transaction.",
+  })
+  async receive(@CurrentTenant() tenant: TenantDto, @Body() body: unknown) {
+    const input = receiveSchema.parse(body);
+
+    return this.tdb.forTenant(tenant.id, async (tx) => {
+      // The batch carries denormalized product/warehouse names, so both rows
+      // have to be resolved server-side — this is why receiving can't just be
+      // a PATCH from the client.
+      const [product] = await tx
+        .select()
+        .from(products)
+        .where(and(eq(products.id, input.productId), eq(products.tenantId, tenant.id)))
+        .limit(1);
+      if (!product) throw new NotFoundException("Product not found");
+
+      const [warehouse] = await tx
+        .select()
+        .from(warehouses)
+        .where(and(eq(warehouses.id, input.warehouseId), eq(warehouses.tenantId, tenant.id)))
+        .limit(1);
+      if (!warehouse) throw new NotFoundException("Warehouse not found");
+
+      const [target] = await tx
+        .select()
+        .from(stockBatches)
+        .where(
+          and(
+            eq(stockBatches.tenantId, tenant.id),
+            input.batchId
+              ? eq(stockBatches.id, input.batchId)
+              : and(
+                  eq(stockBatches.productId, input.productId),
+                  eq(stockBatches.warehouseId, input.warehouseId),
+                )!,
+          ),
+        )
+        .limit(1);
+
+      // Only overwrite the optional fields the caller actually sent.
+      const extra = {
+        ...(input.expiryDate !== undefined ? { expiryDate: input.expiryDate } : {}),
+        ...(input.lowStockThreshold !== undefined ? { lowStockThreshold: input.lowStockThreshold } : {}),
+        ...(input.photoUrl !== undefined ? { photoUrl: input.photoUrl } : {}),
+        ...(input.note !== undefined ? { note: input.note } : {}),
+      };
+
+      const [batch] = target
+        ? await tx
+            .update(stockBatches)
+            .set({ quantity: target.quantity + input.quantity, updatedAt: new Date(), ...extra })
+            .where(eq(stockBatches.id, target.id))
+            .returning()
+        : await tx
+            .insert(stockBatches)
+            .values({
+              tenantId: tenant.id,
+              productId: input.productId,
+              productName: product.nameEn,
+              warehouseId: input.warehouseId,
+              warehouseName: warehouse.name,
+              quantity: input.quantity,
+              unit: product.unit,
+              lowStockThreshold: input.lowStockThreshold ?? DEFAULT_LOW_STOCK_THRESHOLD,
+              ...extra,
+            })
+            .returning();
+
+      const [updatedProduct] = await tx
+        .update(products)
+        .set({ stock: product.stock + input.quantity, updatedAt: new Date() })
+        .where(eq(products.id, input.productId))
+        .returning();
+
+      return { batch, product: updatedProduct };
     });
   }
 

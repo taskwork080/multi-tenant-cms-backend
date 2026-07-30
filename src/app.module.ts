@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { AlertsModule } from "./alerts/alerts.module";
 import { AuthModule } from "./auth/auth.module";
 import { ChatModule } from "./chat/chat.module";
 import { CrudModule } from "./crud/crud.module";
@@ -25,6 +26,7 @@ import { WorkflowsModule } from "./workflows/workflows.module";
     // CrudController's @Get(":id").
     UploadsModule,
     DashboardModule,
+    AlertsModule,
     SearchModule,
     WorkflowsModule,
     ProductsModule,
