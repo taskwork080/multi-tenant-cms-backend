@@ -43,6 +43,20 @@ export interface ResourceDef {
    * special-cased inside the list query.
    */
   flags?: Record<string, SQL>;
+  /**
+   * Stock side effects that must commit with the write.
+   *
+   * `orders` declares `reservesStock`, which makes CrudService reserve every
+   * line inside the same transaction the order is created in: a shortfall
+   * throws, the transaction rolls back, and an order that can't be fulfilled
+   * is never created. Doing it as a second request from the client would
+   * leave a window where the order exists unreserved — and an oversell.
+   *
+   * Deliberately a flag rather than a general hook system: exactly one
+   * resource needs this, and a callback registry would invite the generic
+   * layer to grow business logic.
+   */
+  reservesStock?: boolean;
 }
 
 /**
@@ -76,6 +90,8 @@ export const RESOURCES: Record<string, ResourceDef> = {
     module: "sales",
     searchable: ["code", "customer_name"],
     children: [{ field: "items", table: s.orderItems, fk: "orderId" }],
+    // Placing an order holds stock; cancelling it gives the hold back.
+    reservesStock: true,
   },
   "stock-batches": {
     table: s.stockBatches,
@@ -89,6 +105,70 @@ export const RESOURCES: Record<string, ResourceDef> = {
       /** Low *or* out — what the Topbar's stock alert badge counts. */
       needsAttention: sql`quantity <= low_stock_threshold`,
     },
+  },
+
+  // --- Inventory core ---------------------------------------------------------
+  // Read/list surface for the tables InventoryService writes. Mutations that
+  // move stock go through /api/:tenant/inventory/* instead — a PATCH here can
+  // edit a transfer's carrier, but never its quantities.
+
+  skus: {
+    table: s.skus,
+    module: "inventory",
+    searchable: ["code", "name", "barcode"],
+    flags: { active: sql`status = 'active'` },
+  },
+  "inventory-levels": {
+    table: s.inventoryLevels,
+    module: "inventory",
+    searchable: ["sku_code", "sku_name", "warehouse_name"],
+    // available (on_hand - reserved) is derived, never stored, so every
+    // stock-state filter is a column-to-column comparison.
+    flags: {
+      inStock: sql`(on_hand - reserved) > coalesce(low_stock_threshold, 10)`,
+      lowStock: sql`(on_hand - reserved) <= coalesce(low_stock_threshold, 10) and on_hand > 0`,
+      outOfStock: sql`on_hand <= 0`,
+      needsAttention: sql`(on_hand - reserved) <= coalesce(low_stock_threshold, 10)`,
+      hasReserved: sql`reserved > 0`,
+      hasIncoming: sql`incoming > 0`,
+    },
+  },
+  "stock-movements": {
+    table: s.stockMovements,
+    module: "inventory",
+    orderBy: "at",
+    searchable: ["ref_code", "reason", "note", "actor"],
+    flags: {
+      inbound: sql`qty > 0`,
+      outbound: sql`qty < 0`,
+    },
+  },
+  "inventory-reservations": {
+    table: s.inventoryReservations,
+    module: "inventoryOutbound",
+    searchable: ["order_code", "sku_code", "sku_name"],
+    flags: { open: sql`status = 'active'` },
+  },
+  "stock-transfers": {
+    table: s.stockTransfers,
+    module: "inventoryTransfers",
+    searchable: ["ref", "carrier", "tracking_ref", "from_warehouse_name", "to_warehouse_name"],
+    flags: { open: sql`status in ('draft','in_transit')` },
+    children: [{ field: "items", table: s.stockTransferItems, fk: "transferId" }],
+  },
+  "inbound-receipts": {
+    table: s.inboundReceipts,
+    module: "inventoryInbound",
+    searchable: ["ref", "supplier_name", "reference_no", "warehouse_name"],
+    flags: { open: sql`status = 'draft'` },
+    children: [{ field: "items", table: s.inboundReceiptItems, fk: "receiptId" }],
+  },
+  "cycle-counts": {
+    table: s.cycleCounts,
+    module: "inventoryCounts",
+    searchable: ["ref", "counted_by", "warehouse_name"],
+    flags: { open: sql`status in ('draft','counting','review')` },
+    children: [{ field: "items", table: s.cycleCountItems, fk: "countId" }],
   },
   warehouses: {
     table: s.warehouses,

@@ -292,6 +292,11 @@ export const orderItems = pgTable(
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
     productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+    // Lazy references: skus/warehouses are the inventory core, declared below.
+    // Nullable so historical rows and `stockMode: "always"` lines stay valid.
+    skuId: uuid("sku_id").references((): AnyPgColumn => skus.id, { onDelete: "set null" }),
+    /** Warehouse the line was reserved against / fulfilled from. */
+    warehouseId: uuid("warehouse_id").references((): AnyPgColumn => warehouses.id, { onDelete: "set null" }),
     name: text("name").notNull().default(""),
     qty: integer("qty").notNull().default(1),
     unitPrice: numeric("unit_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
@@ -329,12 +334,23 @@ export const warehouseCoverageAreas = pgTable(
   (t) => [index("warehouse_coverage_warehouse_idx").on(t.warehouseId)],
 );
 
+/**
+ * Legacy stock rows, demoted to lot/expiry metadata by the inventory core
+ * below: `inventory_levels` is the stock truth, a batch only records the lot
+ * (expiry, supplier photo, note) a receipt arrived under. Kept because alerts,
+ * the dashboard and the `stock-batches` CRUD resource still read it.
+ */
 export const stockBatches = pgTable(
   "stock_batches",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     tenantId: tenantId(),
     productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+    /** Lazy reference: skus is declared below. Backfilled to the default SKU. */
+    skuId: uuid("sku_id").references((): AnyPgColumn => skus.id, { onDelete: "set null" }),
+    inventoryLevelId: uuid("inventory_level_id").references((): AnyPgColumn => inventoryLevels.id, {
+      onDelete: "set null",
+    }),
     productName: text("product_name").notNull().default(""),
     warehouseId: uuid("warehouse_id").references(() => warehouses.id, { onDelete: "set null" }),
     warehouseName: text("warehouse_name").notNull().default(""),
@@ -347,6 +363,339 @@ export const stockBatches = pgTable(
     ...timestamps,
   },
   (t) => [index("stock_batches_tenant_idx").on(t.tenantId)],
+);
+
+// --- Inventory core ------------------------------------------------------------
+//
+// The stock model, in one line: a SKU is the unit of stock, an inventory_level
+// is how much of it sits in one warehouse, and stock_movements is the
+// append-only ledger explaining every change to that number.
+//
+//   products → product_variants → skus → inventory_levels (× warehouse)
+//                                   └──→ stock_movements  (ledger)
+//
+// `available` is never stored — it is always `on_hand - reserved`. Orders
+// reserve (on_hand unchanged, reserved up), packing deducts (on_hand down,
+// reserved back down). `products.stock` survives only as a derived mirror of
+// sum(on_hand) so the dashboard and storefront visibility keep working.
+// -------------------------------------------------------------------------------
+
+/**
+ * The unit of stock: one row per product variant, plus one `isDefault` row per
+ * product so a line item that names no variant still resolves to something.
+ * Never hard-deleted — movements reference SKUs — archived instead.
+ */
+export const skus = pgTable(
+  "skus",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    /** Null for the product's default SKU (variant-less, or the catch-all). */
+    variantId: uuid("variant_id").references(() => productVariants.id, { onDelete: "cascade" }),
+    /** Human-facing stock code, e.g. ACME-355-RED-M. Generated, user-editable. */
+    code: text("code").notNull(),
+    barcode: text("barcode"), // EAN/UPC
+    /** Denormalized "Product — Variant", so lists and exports need no joins. */
+    name: text("name").notNull().default(""),
+    unit: text("unit").notNull().default("pcs"),
+    isDefault: boolean("is_default").notNull().default(false),
+    lowStockThreshold: integer("low_stock_threshold").notNull().default(10),
+    status: text("status").notNull().default("active"), // active | archived
+    ...timestamps,
+  },
+  (t) => [
+    index("skus_tenant_idx").on(t.tenantId),
+    index("skus_tenant_created_idx").on(t.tenantId, t.createdAt),
+    index("skus_product_idx").on(t.productId),
+    uniqueIndex("skus_tenant_code").on(t.tenantId, t.code),
+    // One SKU per variant. Postgres treats NULLs as distinct, so this does not
+    // constrain default SKUs — those get a partial unique in 0006 instead.
+    uniqueIndex("skus_tenant_variant").on(t.tenantId, t.variantId),
+  ],
+);
+
+/**
+ * The stock truth: how much of one SKU sits in one warehouse.
+ * Written only by InventoryService.applyMovement, which also appends the
+ * matching ledger row — never update these counters directly.
+ */
+export const inventoryLevels = pgTable(
+  "inventory_levels",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    skuId: uuid("sku_id")
+      .notNull()
+      .references(() => skus.id, { onDelete: "cascade" }),
+    // restrict, not cascade: deleting a warehouse must not silently destroy
+    // the stock records that prove what was in it.
+    warehouseId: uuid("warehouse_id")
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    onHand: integer("on_hand").notNull().default(0),
+    /** Soft-held by open orders. available = on_hand - reserved. */
+    reserved: integer("reserved").notNull().default(0),
+    /** Dispatched transfers + open receipts heading here. */
+    incoming: integer("incoming").notNull().default(0),
+    binLocation: text("bin_location"),
+    /** Null falls back to skus.low_stock_threshold. */
+    lowStockThreshold: integer("low_stock_threshold"),
+    // Denormalized for the generic CRUD list layer, which does no joins.
+    skuCode: text("sku_code").notNull().default(""),
+    skuName: text("sku_name").notNull().default(""),
+    warehouseName: text("warehouse_name").notNull().default(""),
+    ...timestamps,
+  },
+  (t) => [
+    index("inventory_levels_tenant_idx").on(t.tenantId),
+    index("inventory_levels_warehouse_idx").on(t.warehouseId),
+    uniqueIndex("inventory_levels_sku_wh").on(t.tenantId, t.skuId, t.warehouseId),
+  ],
+);
+
+/** Movement kinds, in the direction they push `on_hand`. */
+export const MOVEMENT_KINDS = [
+  "receive",
+  "reserve",
+  "release",
+  "deduct",
+  "transfer_out",
+  "transfer_in",
+  "adjust",
+  "count",
+  "return_in",
+  "scrap",
+] as const;
+export type MovementKind = (typeof MOVEMENT_KINDS)[number];
+
+/**
+ * Append-only ledger. Every change to an inventory_level writes exactly one
+ * row here. The `*_after` snapshots make the movement log auditable without
+ * replaying history, and make drift detectable with a single query.
+ */
+export const stockMovements = pgTable(
+  "stock_movements",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    skuId: uuid("sku_id")
+      .notNull()
+      .references(() => skus.id, { onDelete: "cascade" }),
+    warehouseId: uuid("warehouse_id").references(() => warehouses.id, { onDelete: "set null" }),
+    kind: text("kind").notNull(), // MOVEMENT_KINDS
+    /** Signed change to on_hand. Zero for pure reserve/release. */
+    qty: integer("qty").notNull().default(0),
+    /** Signed change to reserved. */
+    reservedDelta: integer("reserved_delta").notNull().default(0),
+    onHandAfter: integer("on_hand_after").notNull().default(0),
+    reservedAfter: integer("reserved_after").notNull().default(0),
+    refType: text("ref_type"), // order | packing_list | shipment | transfer | receipt | count | return | manual
+    refId: uuid("ref_id"),
+    /** Denormalized ORD-1042 / PKG-07 / TRF-0003 so the log renders join-free. */
+    refCode: text("ref_code"),
+    reason: text("reason"),
+    note: text("note"),
+    actor: text("actor").notNull().default("system"),
+    at: timestamp("at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("stock_movements_tenant_at_idx").on(t.tenantId, t.at),
+    index("stock_movements_sku_at_idx").on(t.tenantId, t.skuId, t.at),
+    index("stock_movements_ref_idx").on(t.tenantId, t.refType, t.refId),
+  ],
+);
+
+/**
+ * A soft hold placed when an order is created and settled when it is packed
+ * (fulfilled) or cancelled (released). The unique on (order_item, warehouse)
+ * is what makes reserving idempotent under a retried order create.
+ */
+export const inventoryReservations = pgTable(
+  "inventory_reservations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    skuId: uuid("sku_id")
+      .notNull()
+      .references(() => skus.id, { onDelete: "cascade" }),
+    warehouseId: uuid("warehouse_id")
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }),
+    orderItemId: uuid("order_item_id").references(() => orderItems.id, { onDelete: "cascade" }),
+    /** Denormalized order code for the outbound queue. */
+    orderCode: text("order_code").notNull().default(""),
+    skuCode: text("sku_code").notNull().default(""),
+    skuName: text("sku_name").notNull().default(""),
+    warehouseName: text("warehouse_name").notNull().default(""),
+    qty: integer("qty").notNull().default(0),
+    fulfilledQty: integer("fulfilled_qty").notNull().default(0),
+    releasedQty: integer("released_qty").notNull().default(0),
+    status: text("status").notNull().default("active"), // active | fulfilled | released | expired
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    index("inventory_reservations_tenant_idx").on(t.tenantId),
+    index("inventory_reservations_order_idx").on(t.orderId),
+    index("inventory_reservations_sku_idx").on(t.tenantId, t.skuId, t.status),
+    uniqueIndex("inventory_reservations_item").on(t.orderItemId, t.warehouseId),
+  ],
+);
+
+/** Warehouse-to-warehouse movement: draft → in_transit → received. */
+export const stockTransfers = pgTable(
+  "stock_transfers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    ref: text("ref").notNull(), // TRF-0001
+    fromWarehouseId: uuid("from_warehouse_id")
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    toWarehouseId: uuid("to_warehouse_id")
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    fromWarehouseName: text("from_warehouse_name").notNull().default(""),
+    toWarehouseName: text("to_warehouse_name").notNull().default(""),
+    status: text("status").notNull().default("draft"), // draft | in_transit | received | cancelled
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    carrier: text("carrier"),
+    trackingRef: text("tracking_ref"),
+    note: text("note"),
+    ...timestamps,
+  },
+  (t) => [
+    index("stock_transfers_tenant_idx").on(t.tenantId),
+    index("stock_transfers_tenant_status_idx").on(t.tenantId, t.status),
+    uniqueIndex("stock_transfers_tenant_ref").on(t.tenantId, t.ref),
+  ],
+);
+
+export const stockTransferItems = pgTable(
+  "stock_transfer_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    transferId: uuid("transfer_id")
+      .notNull()
+      .references(() => stockTransfers.id, { onDelete: "cascade" }),
+    skuId: uuid("sku_id")
+      .notNull()
+      .references(() => skus.id, { onDelete: "restrict" }),
+    skuCode: text("sku_code").notNull().default(""),
+    name: text("name").notNull().default(""),
+    qty: integer("qty").notNull().default(0),
+    receivedQty: integer("received_qty").notNull().default(0),
+    sort: integer("sort").notNull().default(0),
+  },
+  (t) => [index("stock_transfer_items_transfer_idx").on(t.transferId)],
+);
+
+/**
+ * Goods-received note — the inbound half of the lifecycle. There is no
+ * purchase-order/supplier domain yet (the lifecycle starts at "Inventory
+ * Added"); supplier_name plus an optional manufacturer FK leaves room for one.
+ */
+export const inboundReceipts = pgTable(
+  "inbound_receipts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    ref: text("ref").notNull(), // GRN-0001
+    warehouseId: uuid("warehouse_id")
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    warehouseName: text("warehouse_name").notNull().default(""),
+    supplierName: text("supplier_name").notNull().default(""),
+    manufacturerId: uuid("manufacturer_id").references(() => manufacturers.id, { onDelete: "set null" }),
+    status: text("status").notNull().default("draft"), // draft | received | cancelled
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+    /** Supplier invoice / PO number, free text. */
+    referenceNo: text("reference_no"),
+    photoUrl: text("photo_url"),
+    note: text("note"),
+    ...timestamps,
+  },
+  (t) => [
+    index("inbound_receipts_tenant_idx").on(t.tenantId),
+    index("inbound_receipts_tenant_status_idx").on(t.tenantId, t.status),
+    uniqueIndex("inbound_receipts_tenant_ref").on(t.tenantId, t.ref),
+  ],
+);
+
+export const inboundReceiptItems = pgTable(
+  "inbound_receipt_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    receiptId: uuid("receipt_id")
+      .notNull()
+      .references(() => inboundReceipts.id, { onDelete: "cascade" }),
+    skuId: uuid("sku_id")
+      .notNull()
+      .references(() => skus.id, { onDelete: "restrict" }),
+    skuCode: text("sku_code").notNull().default(""),
+    name: text("name").notNull().default(""),
+    qty: integer("qty").notNull().default(0),
+    receivedQty: integer("received_qty").notNull().default(0),
+    unitCost: numeric("unit_cost", { precision: 12, scale: 2, mode: "number" }),
+    expiryDate: text("expiry_date"), // yyyy-mm-dd
+    batchRef: text("batch_ref"),
+    sort: integer("sort").notNull().default(0),
+  },
+  (t) => [index("inbound_receipt_items_receipt_idx").on(t.receiptId)],
+);
+
+/** Stock take. Posting one emits an `adjust`-kind movement per variance. */
+export const cycleCounts = pgTable(
+  "cycle_counts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    ref: text("ref").notNull(), // CNT-0001
+    warehouseId: uuid("warehouse_id")
+      .notNull()
+      .references(() => warehouses.id, { onDelete: "restrict" }),
+    warehouseName: text("warehouse_name").notNull().default(""),
+    status: text("status").notNull().default("draft"), // draft | counting | review | posted | cancelled
+    scope: text("scope").notNull().default("manual"), // full | category | abc | manual
+    countedBy: text("counted_by").notNull().default(""),
+    postedAt: timestamp("posted_at", { withTimezone: true }),
+    note: text("note"),
+    ...timestamps,
+  },
+  (t) => [
+    index("cycle_counts_tenant_idx").on(t.tenantId),
+    index("cycle_counts_tenant_status_idx").on(t.tenantId, t.status),
+    uniqueIndex("cycle_counts_tenant_ref").on(t.tenantId, t.ref),
+  ],
+);
+
+export const cycleCountItems = pgTable(
+  "cycle_count_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    countId: uuid("count_id")
+      .notNull()
+      .references(() => cycleCounts.id, { onDelete: "cascade" }),
+    skuId: uuid("sku_id")
+      .notNull()
+      .references(() => skus.id, { onDelete: "restrict" }),
+    skuCode: text("sku_code").notNull().default(""),
+    name: text("name").notNull().default(""),
+    expectedQty: integer("expected_qty").notNull().default(0),
+    /** Null means "not counted yet" — distinct from a counted zero. */
+    countedQty: integer("counted_qty"),
+    variance: integer("variance").notNull().default(0),
+    sort: integer("sort").notNull().default(0),
+  },
+  (t) => [index("cycle_count_items_count_idx").on(t.countId)],
 );
 
 export const deliveryChannels = pgTable(
@@ -560,6 +909,8 @@ export const shipmentItems = pgTable(
       .notNull()
       .references(() => shipments.id, { onDelete: "cascade" }),
     productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+    /** Traceability only — deduction happens at packing, not shipping. */
+    skuId: uuid("sku_id").references(() => skus.id, { onDelete: "set null" }),
     name: text("name").notNull().default(""),
     qty: integer("qty").notNull().default(1),
     unit: text("unit"),
@@ -785,6 +1136,12 @@ export const packingItems = pgTable(
     name: text("name").notNull().default(""),
     cordNo: text("cord_no"),
     productId: uuid("product_id").references(() => products.id, { onDelete: "set null" }),
+    skuId: uuid("sku_id").references(() => skus.id, { onDelete: "set null" }),
+    /**
+     * Pieces packed. Historically this lived two levels down in carton_sizes;
+     * confirm falls back to summing those when this is still 0.
+     */
+    qty: integer("qty").notNull().default(0),
     sort: integer("sort").notNull().default(0),
   },
   (t) => [index("packing_items_list_idx").on(t.packingListId)],

@@ -3,12 +3,12 @@ import { and, eq, gte, lt, sql } from "drizzle-orm";
 import {
   categories,
   customers,
+  inventoryLevels,
   orderItems,
   orders,
   products,
   returnRequests,
   shipments,
-  stockBatches,
 } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import type { TenantDto } from "../tenant/tenant.service";
@@ -17,6 +17,13 @@ export type Period = "7" | "30" | "all";
 
 const DAY_MS = 86_400_000;
 const LOW_STOCK = 10;
+
+/**
+ * Low stock means low *available* — stock already held by an open order can't
+ * fill the next one, so counting it would hide the shortage until someone
+ * tried to sell it. A level's own threshold wins over the global default.
+ */
+const LOW_STOCK_PREDICATE = sql`(on_hand - reserved) <= coalesce(low_stock_threshold, ${LOW_STOCK})`;
 
 /** Revenue/volume totals for one time window. */
 export interface WindowStats {
@@ -163,19 +170,31 @@ export class DashboardService {
           .from(products)
           .where(eq(products.tenantId, tenant.id)),
 
+        // Reads inventory_levels — the stock truth — rather than the legacy
+        // stock_batches rows, which only the old flat receive path maintains.
+        // Field names are kept so the dashboard widget renders unchanged;
+        // `quantity` now carries available (on hand minus reserved).
         tx
-          .select()
-          .from(stockBatches)
-          .where(and(eq(stockBatches.tenantId, tenant.id), sql`quantity <= low_stock_threshold`))
-          .orderBy(stockBatches.quantity)
+          .select({
+            id: inventoryLevels.id,
+            productId: inventoryLevels.skuId,
+            productName: inventoryLevels.skuName,
+            warehouseId: inventoryLevels.warehouseId,
+            warehouseName: inventoryLevels.warehouseName,
+            quantity: sql<number>`(on_hand - reserved)::int`,
+            lowStockThreshold: sql<number>`coalesce(low_stock_threshold, ${LOW_STOCK})::int`,
+          })
+          .from(inventoryLevels)
+          .where(and(eq(inventoryLevels.tenantId, tenant.id), LOW_STOCK_PREDICATE))
+          .orderBy(sql`(on_hand - reserved) asc`)
           .limit(5),
 
         // Count as well as the top-5 rows — the notes "business snapshot" wants
         // the total, not a sample.
         tx
           .select({ n: sql<number>`count(*)::int` })
-          .from(stockBatches)
-          .where(and(eq(stockBatches.tenantId, tenant.id), sql`quantity <= low_stock_threshold`)),
+          .from(inventoryLevels)
+          .where(and(eq(inventoryLevels.tenantId, tenant.id), LOW_STOCK_PREDICATE)),
 
         // On-time delivery: of delivered shipments that had an ETA, how many
         // had their last tracking event on or before it. `eta` is stored as an

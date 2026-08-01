@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
-import { chatMessages, conversations, stockBatches } from "../db/schema";
+import { chatMessages, conversations, inventoryLevels } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import type { TenantDto } from "../tenant/tenant.service";
 
@@ -21,16 +21,39 @@ export class AlertsService {
 
   async alerts(tenant: TenantDto) {
     return this.tdb.forTenant(tenant.id, async (tx) => {
-      // quantity <= low_stock_threshold is a column-to-column comparison, so it
-      // can't be an ordinary filter — same predicate as the `needsAttention`
-      // flag on stock-batches and the dashboard's low-stock widget.
-      const lowStock = and(eq(stockBatches.tenantId, tenant.id), sql`quantity <= low_stock_threshold`);
+      // Reads inventory_levels, the stock truth, rather than the legacy
+      // stock_batches rows (which only the old flat receive path still
+      // maintains). The badge alerts on *available* — stock already held by an
+      // open order can't fill the next one, so counting it as on-hand would
+      // hide the shortage until someone tried to sell it.
+      //
+      // Column-to-column comparisons, so they can't be ordinary filters; same
+      // predicate as the `needsAttention` flag on inventory-levels.
+      const lowStock = and(
+        eq(inventoryLevels.tenantId, tenant.id),
+        sql`(on_hand - reserved) <= coalesce(low_stock_threshold, 10)`,
+      );
       const unread = and(eq(conversations.tenantId, tenant.id), gt(conversations.unread, 0));
 
       const [lowStockBatches, lowStockRows, unreadConversations, unreadRows] = await Promise.all([
-        tx.select().from(stockBatches).where(lowStock).orderBy(stockBatches.quantity).limit(SAMPLE.batches),
+        tx
+          .select({
+            id: inventoryLevels.id,
+            productId: inventoryLevels.skuId,
+            productName: inventoryLevels.skuName,
+            warehouseId: inventoryLevels.warehouseId,
+            warehouseName: inventoryLevels.warehouseName,
+            // Named `quantity` so the existing Topbar dropdown keeps rendering
+            // without a frontend change; it now carries *available*, not on-hand.
+            quantity: sql<number>`(on_hand - reserved)::int`,
+            lowStockThreshold: sql<number>`coalesce(low_stock_threshold, 10)::int`,
+          })
+          .from(inventoryLevels)
+          .where(lowStock)
+          .orderBy(sql`(on_hand - reserved) asc`)
+          .limit(SAMPLE.batches),
 
-        tx.select({ n: sql<number>`count(*)::int` }).from(stockBatches).where(lowStock),
+        tx.select({ n: sql<number>`count(*)::int` }).from(inventoryLevels).where(lowStock),
 
         // The dropdown previews each thread's latest message, so pull it with a
         // lateral join rather than making the client fetch every conversation.

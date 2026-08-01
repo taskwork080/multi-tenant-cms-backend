@@ -3,6 +3,7 @@ import { and, asc, desc, eq, getTableColumns, gte, ilike, inArray, isNotNull, is
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { Db } from "../db/db.tokens";
 import { TenantDb } from "../db/tenant-db.service";
+import { FulfilmentService } from "../inventory/fulfilment.service";
 import type { TenantDto } from "../tenant/tenant.service";
 import { AnyTable, ChildDef, RESOURCES, ResourceDef } from "./resource-registry";
 
@@ -89,7 +90,10 @@ type Row = Record<string, unknown>;
 
 @Injectable()
 export class CrudService {
-  constructor(private readonly tdb: TenantDb) {}
+  constructor(
+    private readonly tdb: TenantDb,
+    private readonly fulfilment: FulfilmentService,
+  ) {}
 
   resolve(resource: string, tenant: TenantDto): ResourceDef {
     const def = RESOURCES[resource];
@@ -183,6 +187,15 @@ export class CrudService {
     return this.tdb.forTenant(tenant.id, async (tx) => {
       const [row] = await tx.insert(def.table).values(values as never).returning();
       await this.writeChildren(tx, tenant.id, def.children ?? [], (row as Row).id as string, childInputs);
+
+      // Same transaction on purpose: if the order can't be covered, the
+      // reservation throws and takes the order row with it. That rollback is
+      // the oversell guard — there is no moment where the order exists but
+      // its stock isn't held.
+      if (def.reservesStock && !this.isCancelled(row as Row)) {
+        await this.fulfilment.reserveOrder(tx, tenant.id, (row as Row).id as string);
+      }
+
       const [hydrated] = await this.hydrateMany(tx, def.children, [row as Row]);
       return hydrated;
     });
@@ -196,6 +209,19 @@ export class CrudService {
     }
     values.updatedAt = new Date();
     return this.tdb.forTenant(tenant.id, async (tx) => {
+      // Read first: releasing has to key off the *transition* into cancelled,
+      // not the final value, or re-saving an already-cancelled order would
+      // release a second time.
+      const before = def.reservesStock
+        ? ((
+            await tx
+              .select()
+              .from(def.table)
+              .where(and(eq(def.table.id, id), eq(def.table.tenantId, tenant.id)))
+              .limit(1)
+          )[0] as Row | undefined)
+        : undefined;
+
       const [row] = await tx
         .update(def.table)
         .set(values as never)
@@ -203,9 +229,28 @@ export class CrudService {
         .returning();
       if (!row) throw new NotFoundException(`${resource}/${id} not found`);
       await this.writeChildren(tx, tenant.id, def.children ?? [], id, childInputs, { replace: true });
+
+      if (def.reservesStock && before) {
+        const wasCancelled = this.isCancelled(before);
+        const nowCancelled = this.isCancelled(row as Row);
+        if (!wasCancelled && nowCancelled) {
+          await this.fulfilment.releaseOrder(tx, tenant.id, id, "cancel");
+        } else if (wasCancelled && !nowCancelled) {
+          // Reinstated — put the hold back, and fail loudly if stock has since
+          // gone to someone else rather than quietly reviving an unfillable order.
+          await this.fulfilment.reserveOrder(tx, tenant.id, id);
+        }
+      }
+
       const [hydrated] = await this.hydrateMany(tx, def.children, [row as Row]);
       return hydrated;
     });
+  }
+
+  /** Statuses that mean "this order will not ship", so its holds are freed. */
+  private isCancelled(row: Row): boolean {
+    const status = String(row.deliveryStatus ?? "").toLowerCase();
+    return status === "cancelled" || status === "canceled" || status === "failed";
   }
 
   async remove(tenant: TenantDto, resource: string, id: string) {
