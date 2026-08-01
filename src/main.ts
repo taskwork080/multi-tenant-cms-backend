@@ -4,6 +4,7 @@ import { NestFactory } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { json, urlencoded } from "express";
 import { AppModule } from "./app.module";
+import { PgExceptionFilter } from "./pg-exception.filter";
 import { ZodExceptionFilter } from "./zod-exception.filter";
 
 async function bootstrap() {
@@ -11,7 +12,7 @@ async function bootstrap() {
 
   const origins = (process.env.CORS_ORIGIN ?? "http://localhost:5000").split(",").map((o) => o.trim());
   app.enableCors({ origin: origins, credentials: true });
-  app.useGlobalFilters(new ZodExceptionFilter());
+  app.useGlobalFilters(new ZodExceptionFilter(), new PgExceptionFilter());
   app.enableShutdownHooks();
 
   // JSON bodies can carry base64 chat/note attachments; raise the default 100kb cap.
