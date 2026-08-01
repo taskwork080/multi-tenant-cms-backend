@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   primaryKey,
@@ -857,11 +858,21 @@ export const staffUsers = pgTable(
     name: text("name").notNull(),
     email: text("email").notNull(),
     roleId: uuid("role_id").references(() => roles.id, { onDelete: "set null" }),
-    status: text("status").notNull().default("invited"), // active | invited | suspended
+    status: text("status").notNull().default("invited"), // active | invited | suspended | deactivated
     lastActive: timestamp("last_active", { withTimezone: true }),
     ...timestamps,
   },
-  (t) => [index("staff_users_tenant_idx").on(t.tenantId), uniqueIndex("staff_users_tenant_email").on(t.tenantId, t.email)],
+  (t) => [
+    index("staff_users_tenant_idx").on(t.tenantId),
+    uniqueIndex("staff_users_tenant_email").on(t.tenantId, t.email),
+    // One staff row per Supabase identity. NULLs are distinct in Postgres, so
+    // rows still awaiting an auth user don't collide.
+    uniqueIndex("staff_users_auth_user_id_key").on(t.authUserId),
+    // The platform list filters/sorts across tenants, so the tenant-prefixed
+    // index above can't serve it.
+    index("staff_users_status_idx").on(t.status),
+    index("staff_users_created_idx").on(t.createdAt),
+  ],
 );
 
 // --- Activity / audit ----------------------------------------------------------------------
@@ -878,6 +889,63 @@ export const activities = pgTable(
     ...timestamps,
   },
   (t) => [index("activities_tenant_idx").on(t.tenantId), index("activities_tenant_created").on(t.tenantId, t.createdAt)],
+);
+
+// --- Platform administration -----------------------------------------------
+// The two tables below are the only tenant-NULLABLE tables in the schema, so
+// they cannot use the tenantId() helper above (it is notNull + cascade). Their
+// tenant_id is ON DELETE SET NULL on purpose: deleting a tenant must not erase
+// the audit trail proving it was deleted.
+//
+// Access is governed by drizzle/0008_platform_admin.sql — RLS is enabled AND
+// forced with a single policy keyed on the `app.platform` GUC, which only
+// TenantDb.asPlatform() sets. There is deliberately no tenant_isolation policy,
+// so tenant-scoped connections see nothing here by construction.
+
+/** Every super-admin mutation, written in the same transaction as the change. */
+export const platformAuditLog = pgTable(
+  "platform_audit_log",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    /** Supabase auth user id of the acting admin; null for system jobs. */
+    actorId: uuid("actor_id"),
+    actorEmail: text("actor_email").notNull().default(""),
+    /** See src/platform/audit.actions.ts — e.g. "user.move_tenant". */
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(), // staff_user | tenant | role | auth_user
+    /** Text, not uuid: some targets are slugs. */
+    targetId: text("target_id"),
+    tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+    before: jsonb("before"),
+    after: jsonb("after"),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index("platform_audit_created_idx").on(t.createdAt),
+    index("platform_audit_actor_idx").on(t.actorId, t.createdAt),
+    index("platform_audit_target_idx").on(t.targetType, t.targetId),
+    index("platform_audit_tenant_idx").on(t.tenantId, t.createdAt),
+  ],
+);
+
+/** Login history. Written by POST /api/auth/events for the caller only. */
+export const authEvents = pgTable(
+  "auth_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    authUserId: uuid("auth_user_id").notNull(),
+    staffUserId: uuid("staff_user_id").references(() => staffUsers.id, { onDelete: "set null" }),
+    tenantId: uuid("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+    email: text("email").notNull().default(""),
+    /** sign_in | sign_out | password_recovery | invite_accepted */
+    event: text("event").notNull(),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("auth_events_user_idx").on(t.authUserId, t.createdAt), index("auth_events_created_idx").on(t.createdAt)],
 );
 
 // --- Shipments & tracking ---------------------------------------------------------------------

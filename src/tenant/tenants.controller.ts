@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, UseGuards } from "@nestjs/co
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { z } from "zod";
 import { Roles } from "../auth/decorators";
+import { RESERVED_TENANT_SLUGS } from "../platform/dto";
 import { TenantGuard } from "./tenant.guard";
 import { TenantService } from "./tenant.service";
 
@@ -33,7 +34,13 @@ const tenantPatchSchema = z
   .strict();
 
 const tenantCreateSchema = tenantPatchSchema.extend({
-  slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
+  slug: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9-]+$/)
+    // A tenant named "admin" would make /api/admin/users ambiguous with the
+    // platform routes; the others shadow top-level API paths the same way.
+    .refine((s) => !RESERVED_TENANT_SLUGS.has(s), "That slug is reserved by the platform"),
   name: z.string().min(1),
   type: z.enum(["ecommerce", "warehouse", "marketplace"]),
 });

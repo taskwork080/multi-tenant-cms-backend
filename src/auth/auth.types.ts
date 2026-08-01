@@ -12,3 +12,14 @@ export interface AuthUser {
 }
 
 export const PLATFORM_ADMIN = "platform_admin";
+
+/**
+ * Display name for an activity/audit `actor` column.
+ *
+ * activities.actor is free text and used to default to "system" at every call
+ * site, so the feed recorded what happened but never who. Prefer the email —
+ * it is what a human reading the log recognises.
+ */
+export function actorOf(user?: AuthUser | null): string {
+  return user?.email ?? user?.id ?? "system";
+}

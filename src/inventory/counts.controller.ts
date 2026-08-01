@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { Db } from "../db/db.tokens";
 import { cycleCountItems, cycleCounts, inventoryLevels, warehouses } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
+import { CurrentUser } from "../auth/decorators";
+import { actorOf, type AuthUser } from "../auth/auth.types";
 import { CurrentTenant } from "../tenant/tenant.decorator";
 import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
@@ -47,7 +49,7 @@ export class CountsController {
     summary: "Open a count sheet",
     description: "Snapshots current on-hand as the expected quantity for every SKU in scope.",
   })
-  async create(@CurrentTenant() tenant: TenantDto, @Body() body: unknown) {
+  async create(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Body() body: unknown) {
     const input = createSchema.parse(body);
 
     return this.tdb.forTenant(tenant.id, async (tx) => {
@@ -102,6 +104,7 @@ export class CountsController {
       );
 
       await this.inventory.writeActivity(tx, tenant.id, {
+        actor: actorOf(user),
         action: "Opened stock count",
         target: `${ref} · ${warehouse.name}`,
       });
@@ -115,7 +118,7 @@ export class CountsController {
     summary: "Record counted quantities",
     description: "Saves progress without posting. Null clears a line back to uncounted.",
   })
-  async saveLines(@CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
+  async saveLines(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
     const input = countSchema.parse(body);
 
     return this.tdb.forTenant(tenant.id, async (tx) => {
@@ -153,7 +156,7 @@ export class CountsController {
     description:
       "Writes one `count` movement per non-zero variance, bringing on-hand in line with what was physically found. Idempotent.",
   })
-  async post(@CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
+  async post(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
     const note = z.object({ note: z.string().optional() }).parse(body ?? {}).note;
 
     return this.tdb.forTenant(tenant.id, async (tx) => {
@@ -218,6 +221,7 @@ export class CountsController {
 
       await this.inventory.syncProductStock(tx, tenant.id, touched);
       await this.inventory.writeActivity(tx, tenant.id, {
+        actor: actorOf(user),
         action: "Posted stock count",
         target: `${count.ref} · ${adjustments} adjustment${adjustments === 1 ? "" : "s"}`,
       });
@@ -228,7 +232,7 @@ export class CountsController {
 
   @Post(":id/cancel")
   @ApiOperation({ summary: "Abandon a count without touching stock" })
-  async cancel(@CurrentTenant() tenant: TenantDto, @Param("id") id: string) {
+  async cancel(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Param("id") id: string) {
     return this.tdb.forTenant(tenant.id, async (tx) => {
       const count = await this.load(tx, tenant.id, id);
       if (count.status === "posted") throw new ConflictException("A posted count cannot be cancelled");

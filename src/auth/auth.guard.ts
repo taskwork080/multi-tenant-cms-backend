@@ -24,7 +24,11 @@ export class AuthGuard implements CanActivate {
 
     if (!header?.startsWith("Bearer ")) {
       // Local development convenience: run without Supabase Auth wired up.
-      if (this.config.get("AUTH_DEV_BYPASS") === "true") {
+      // This hands out a platform_admin identity to any unauthenticated caller,
+      // which since /api/admin/* exists is a full platform takeover — so it is
+      // hard-gated on NODE_ENV as well as the flag, and main.ts refuses to boot
+      // if both are set in production.
+      if (process.env.NODE_ENV !== "production" && this.config.get("AUTH_DEV_BYPASS") === "true") {
         req.user = { id: "dev", email: "dev@local", role: PLATFORM_ADMIN };
         return true;
       }

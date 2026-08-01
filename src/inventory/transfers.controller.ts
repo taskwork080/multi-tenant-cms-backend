@@ -5,6 +5,8 @@ import { z } from "zod";
 import type { Db } from "../db/db.tokens";
 import { stockTransferItems, stockTransfers, warehouses } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
+import { CurrentUser } from "../auth/decorators";
+import { actorOf, type AuthUser } from "../auth/auth.types";
 import { CurrentTenant } from "../tenant/tenant.decorator";
 import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
@@ -54,7 +56,7 @@ export class TransfersController {
     summary: "Create a draft transfer",
     description: "Assigns the next TRF- reference. Creating a draft moves no stock — dispatch does that.",
   })
-  async create(@CurrentTenant() tenant: TenantDto, @Body() body: unknown) {
+  async create(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Body() body: unknown) {
     const input = createSchema.parse(body);
     if (input.fromWarehouseId === input.toWarehouseId) {
       throw new ConflictException("Source and destination warehouse must differ");
@@ -95,6 +97,7 @@ export class TransfersController {
       }
 
       await this.inventory.writeActivity(tx, tenant.id, {
+        actor: actorOf(user),
         action: "Created stock transfer",
         target: `${ref} · ${from.name} → ${to.name}`,
       });
@@ -109,7 +112,7 @@ export class TransfersController {
     description:
       "Removes stock from the source and raises the destination's incoming count. Idempotent — re-dispatching an already-sent transfer returns it unchanged.",
   })
-  async dispatch(@CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
+  async dispatch(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
     const input = dispatchSchema.parse(body ?? {});
 
     return this.tdb.forTenant(tenant.id, async (tx) => {
@@ -150,6 +153,7 @@ export class TransfersController {
 
       await this.inventory.syncProductStock(tx, tenant.id, items.map((i) => i.skuId));
       await this.inventory.writeActivity(tx, tenant.id, {
+        actor: actorOf(user),
         action: "Dispatched stock transfer",
         target: transfer.ref,
       });
@@ -164,7 +168,7 @@ export class TransfersController {
     description:
       "Lands the received quantities as on-hand. A partial receipt keeps the transfer in transit so the shortfall stays visible.",
   })
-  async receive(@CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
+  async receive(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
     const input = receiveSchema.parse(body ?? {});
 
     return this.tdb.forTenant(tenant.id, async (tx) => {
@@ -216,6 +220,7 @@ export class TransfersController {
 
       await this.inventory.syncProductStock(tx, tenant.id, items.map((i) => i.skuId));
       await this.inventory.writeActivity(tx, tenant.id, {
+        actor: actorOf(user),
         action: complete ? "Received stock transfer" : "Partially received stock transfer",
         target: transfer.ref,
       });
@@ -229,7 +234,7 @@ export class TransfersController {
     summary: "Cancel a transfer",
     description: "A dispatched transfer is returned to the source; a draft is simply closed.",
   })
-  async cancel(@CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
+  async cancel(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
     const reason = z.object({ reason: z.string().optional() }).parse(body ?? {}).reason;
 
     return this.tdb.forTenant(tenant.id, async (tx) => {
@@ -267,6 +272,7 @@ export class TransfersController {
         .returning();
 
       await this.inventory.writeActivity(tx, tenant.id, {
+        actor: actorOf(user),
         action: "Cancelled stock transfer",
         target: transfer.ref,
       });

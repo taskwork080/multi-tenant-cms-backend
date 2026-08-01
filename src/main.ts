@@ -8,7 +8,18 @@ import { AppModule } from "./app.module";
 import { ZodExceptionFilter } from "./zod-exception.filter";
 
 async function bootstrap() {
+  // AUTH_DEV_BYPASS grants platform_admin to any caller with no Bearer token.
+  // With /api/admin/* live that is a total compromise, so refuse to start
+  // rather than trust that nobody copied the wrong .env onto a server.
+  if (process.env.NODE_ENV === "production" && process.env.AUTH_DEV_BYPASS === "true") {
+    throw new Error("AUTH_DEV_BYPASS must not be enabled in production — it grants platform_admin to anonymous callers");
+  }
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+
+  if (process.env.AUTH_DEV_BYPASS === "true") {
+    new Logger("Bootstrap").warn("AUTH_DEV_BYPASS is ON — unauthenticated requests act as platform_admin");
+  }
 
   // Express 5 defaults the query parser to "simple" (Node's querystring), which
   // leaves `?createdAt[gte]=…` as the literal key "createdAt[gte]". The CRUD

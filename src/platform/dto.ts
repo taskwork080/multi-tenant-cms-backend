@@ -1,0 +1,185 @@
+import { z } from "zod";
+import { AUDIT_ACTIONS, AUDIT_TARGET_TYPES } from "./audit.actions";
+
+/**
+ * Request schemas for /api/admin/*.
+ *
+ * MIRRORED on the frontend in `src/lib/schemas.ts` (multi-tenant-cms repo).
+ * There is no shared package between the two repos, so any change here needs
+ * the matching change there or the client will send bodies the server rejects.
+ */
+
+/** Application roles carried in the JWT's app_metadata.role. */
+export const APP_ROLES = ["owner", "admin", "staff", "viewer"] as const;
+
+/** CMS-level account states. `deactivated` and `suspended` both ban in GoTrue. */
+export const USER_STATUSES = ["active", "invited", "suspended", "deactivated"] as const;
+
+const uuid = z.string().uuid();
+const email = z.string().trim().toLowerCase().email();
+
+export const adminUserCreateSchema = z
+  .object({
+    tenantId: uuid,
+    name: z.string().trim().min(1).max(120),
+    email,
+    roleId: uuid.nullable().optional(),
+    appRole: z.enum(APP_ROLES).default("staff"),
+    sendInvite: z.boolean().default(true),
+    // Only honoured when sendInvite is false; otherwise the invite link sets it.
+    password: z.string().min(8).max(128).optional(),
+  })
+  .strict()
+  .refine((v) => v.sendInvite || !!v.password, {
+    message: "A password is required when no invite is sent",
+    path: ["password"],
+  });
+
+export const adminUserUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    email: email.optional(),
+    roleId: uuid.nullable().optional(),
+    appRole: z.enum(APP_ROLES).optional(),
+  })
+  .strict();
+
+export const adminUserStatusSchema = z
+  .object({
+    action: z.enum(["activate", "deactivate", "suspend", "restore"]),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
+export const moveTenantSchema = z
+  .object({
+    tenantId: uuid,
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
+export const resetPasswordSchema = z
+  .object({
+    mode: z.enum(["link", "set"]).default("link"),
+    password: z.string().min(8).max(128).optional(),
+  })
+  .strict()
+  .refine((v) => v.mode !== "set" || !!v.password, {
+    message: "A password is required in 'set' mode",
+    path: ["password"],
+  });
+
+// --- Tenants ---------------------------------------------------------------
+
+const tenantConfigSchema = z
+  .object({
+    defaultLanguage: z.enum(["en", "bn"]).optional(),
+    currency: z.string().optional(),
+    currencySymbol: z.string().optional(),
+    ga4Id: z.string().optional(),
+    pixelId: z.string().optional(),
+    strictOrderFlow: z.boolean().optional(),
+    defaultSellerName: z.string().optional(),
+    locationServiceOn: z.boolean().optional(),
+    codEnabled: z.boolean().optional(),
+    allowForceDeleteCategory: z.boolean().optional(),
+    cordNo: z.string().optional(),
+  })
+  .strict();
+
+export const adminTenantPatchSchema = z
+  .object({
+    name: z.string().trim().min(1).optional(),
+    type: z.enum(["ecommerce", "warehouse", "marketplace"]).optional(),
+    region: z.string().optional(),
+    theme: z.object({ brand: z.string(), brandFg: z.string() }).partial().optional(),
+    entitlements: z.array(z.string()).optional(),
+    config: tenantConfigSchema.optional(),
+  })
+  .strict();
+
+/**
+ * Slugs that would collide with a top-level API path. `/api/admin/users` is
+ * indistinguishable from `/api/:tenant/:resource` with tenant="admin", so a
+ * tenant may never claim one of these.
+ */
+export const RESERVED_TENANT_SLUGS = new Set(["admin", "tenants", "me", "docs", "health", "auth", "api"]);
+
+export const adminTenantCreateSchema = adminTenantPatchSchema.extend({
+  slug: z
+    .string()
+    .trim()
+    .min(1)
+    .max(63)
+    .regex(/^[a-z0-9-]+$/, "Use lowercase letters, numbers and hyphens only")
+    .refine((s) => !RESERVED_TENANT_SLUGS.has(s), "That slug is reserved by the platform"),
+  name: z.string().trim().min(1),
+  type: z.enum(["ecommerce", "warehouse", "marketplace"]),
+});
+
+// --- Roles -----------------------------------------------------------------
+
+export const adminRoleSchema = z
+  .object({
+    tenantId: uuid,
+    name: z.string().trim().min(1).max(80),
+    description: z.string().trim().max(300).default(""),
+    permissions: z.array(z.string()).default([]),
+  })
+  .strict();
+
+export const adminRolePatchSchema = adminRoleSchema.partial().omit({ tenantId: true }).strict();
+
+// --- Auth events -----------------------------------------------------------
+
+export const authEventSchema = z
+  .object({
+    // NOTE: no user field by design — the row is always written for req.user.
+    event: z.enum(["sign_in", "sign_out", "password_recovery", "invite_accepted"]),
+  })
+  .strict();
+
+// --- Shared list query -----------------------------------------------------
+
+const rangeSchema = z.object({ gte: z.string().optional(), lte: z.string().optional() }).partial();
+
+/** `?status=a&status=b` arrives as a string or string[] depending on arity. */
+const multi = z.union([z.string(), z.array(z.string())]).optional();
+
+export const adminUserListSchema = z
+  .object({
+    q: z.string().trim().optional(),
+    tenantId: z.string().optional(),
+    roleId: z.string().optional(),
+    status: multi,
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(50),
+    sort: z.string().optional(),
+    createdAt: rangeSchema.optional(),
+  })
+  .passthrough();
+
+export const auditListSchema = z
+  .object({
+    q: z.string().trim().optional(),
+    actorId: z.string().optional(),
+    action: multi,
+    targetType: z.enum(AUDIT_TARGET_TYPES).optional(),
+    targetId: z.string().optional(),
+    tenantId: z.string().optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(50),
+    createdAt: rangeSchema.optional(),
+  })
+  .passthrough();
+
+export const tenantListSchema = z
+  .object({
+    q: z.string().trim().optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(50),
+    sort: z.string().optional(),
+  })
+  .passthrough();
+
+export const AUDIT_ACTION_VALUES = AUDIT_ACTIONS;
