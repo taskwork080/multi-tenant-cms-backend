@@ -2,8 +2,11 @@ import { Body, Controller, NotFoundException, Param, Post, UseGuards } from "@ne
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { packingLists, packShipEvents } from "../db/schema";
+import type { Db } from "../db/db.tokens";
+import { packingItems, packingLists, packShipEvents } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
+import { FulfilmentService } from "../inventory/fulfilment.service";
+import { InventoryService } from "../inventory/inventory.service";
 import { CurrentTenant } from "../tenant/tenant.decorator";
 import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
@@ -12,6 +15,9 @@ const confirmSchema = z.object({
   signedBy: z.string().optional(),
   thirdPartyCarrier: z.string().optional(),
   thirdPartyNo: z.string().optional(),
+  /** Buyer details captured when adding straight into the shipment queue. */
+  customerName: z.string().optional(),
+  orderCode: z.string().optional(),
 });
 
 const shipEventSchema = z.object({
@@ -29,13 +35,17 @@ const shipEventSchema = z.object({
 @Controller("api/:tenant/packing-lists/:id")
 @UseGuards(TenantGuard)
 export class PackingController {
-  constructor(private readonly tdb: TenantDb) {}
+  constructor(
+    private readonly tdb: TenantDb,
+    private readonly fulfilment: FulfilmentService,
+    private readonly inventory: InventoryService,
+  ) {}
 
   @Post("confirm")
   @ApiOperation({
     summary: "Confirm a packing list",
     description:
-      "Assigns the tenant's next sequential shipmentNo, stamps the sign-off, and moves the packing into the courier queue with shipStatus=awaiting. Idempotent.",
+      "Assigns the tenant's next sequential shipmentNo, stamps the sign-off, moves the packing into the courier queue, and deducts the packed stock — converting the order's reservations into a real deduction. Idempotent.",
   })
   async confirm(@CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
     const input = confirmSchema.parse(body ?? {});
@@ -71,12 +81,86 @@ export class PackingController {
           signedAt: input.signedBy ? new Date() : row.signedAt,
           thirdPartyCarrier: input.thirdPartyCarrier ?? row.thirdPartyCarrier,
           thirdPartyNo: input.thirdPartyNo ?? row.thirdPartyNo,
+          customerName: input.customerName ?? row.customerName,
+          orderCode: input.orderCode ?? row.orderCode,
           updatedAt: new Date(),
         })
         .where(eq(packingLists.id, id))
         .returning();
-      return updated;
+
+      // Confirming is the moment the goods physically leave the shelf, so it
+      // is where reservations become deductions. The shipmentNo gate above
+      // already makes this at-most-once.
+      const stock = await this.deductPacked(tx, tenant.id, id, updated.orderCode, input.signedBy);
+
+      return { ...updated, ...stock };
     });
+  }
+
+  /**
+   * Turns a confirmed packing list into stock movements.
+   *
+   * Quantity has historically lived two levels below a packing item, in
+   * carton_sizes, so `packing_items.qty` is only trusted when set and the
+   * carton sum is used otherwise — old packing lists still deduct correctly.
+   *
+   * A list whose items carry no SKU and no quantity deducts nothing and says
+   * so, rather than silently confirming as if stock had moved.
+   */
+  private async deductPacked(
+    tx: Db,
+    tenantId: string,
+    packingListId: string,
+    orderCode: string | null,
+    actor?: string,
+  ): Promise<{ deducted: number; stockWarnings: string[] }> {
+    if (await this.fulfilment.alreadyProcessed(tx, tenantId, "packing_list", packingListId)) {
+      return { deducted: 0, stockWarnings: [] };
+    }
+
+    const rows = await tx.execute(sql`
+      select pi.id, pi.sku_id as "skuId", pi.product_id as "productId",
+             greatest(
+               pi.qty,
+               coalesce((
+                 select sum(cs.qty * greatest(ic.to_no - ic.from_no + 1, 1))::int
+                   from public.item_cartons ic
+                   join public.carton_sizes cs on cs.carton_id = ic.id
+                  where ic.packing_item_id = pi.id
+               ), 0)
+             )::int as qty
+        from public.packing_items pi
+       where pi.packing_list_id = ${packingListId}
+    `);
+
+    const items = rows as unknown as { id: string; skuId: string | null; productId: string | null; qty: number }[];
+
+    const lines: { skuId: string; qty: number }[] = [];
+    for (const item of items) {
+      if (item.qty <= 0) continue;
+      const sku = await this.inventory.resolveSku(tx, tenantId, {
+        skuId: item.skuId,
+        productId: item.productId,
+      });
+      if (!sku) continue;
+      lines.push({ skuId: sku.id, qty: item.qty });
+      if (!item.skuId) {
+        await tx.update(packingItems).set({ skuId: sku.id }).where(eq(packingItems.id, item.id));
+      }
+    }
+
+    if (lines.length === 0) return { deducted: 0, stockWarnings: [] };
+
+    const order = orderCode ? await this.fulfilment.orderByCode(tx, tenantId, orderCode) : null;
+    const { deducted, warnings } = await this.fulfilment.deduct(
+      tx,
+      tenantId,
+      lines,
+      { type: "packing_list", id: packingListId, code: orderCode ?? undefined, orderId: order?.id },
+      actor,
+    );
+
+    return { deducted, stockWarnings: warnings };
   }
 
   @Post("ship-events")

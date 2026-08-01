@@ -15,6 +15,48 @@
       "when": 1783878275564,
       "tag": "0001_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784963645430,
+      "tag": "0002_white_microbe",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784963811770,
+      "tag": "0003_products_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785000000000,
+      "tag": "0004_list_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785475886655,
+      "tag": "0005_tidy_terrax",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785475900000,
+      "tag": "0006_inventory_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785475910000,
+      "tag": "0007_inventory_rls",
+      "breakpoints": true
     }
   ]
 }

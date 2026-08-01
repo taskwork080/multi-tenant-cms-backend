@@ -1,7 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { and, asc, desc, eq, getTableColumns, ilike, inArray, or, sql, SQL } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, gte, ilike, inArray, isNotNull, isNull, lte, or, sql, SQL } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { Db } from "../db/db.tokens";
 import { TenantDb } from "../db/tenant-db.service";
+import { FulfilmentService } from "../inventory/fulfilment.service";
 import type { TenantDto } from "../tenant/tenant.service";
 import { AnyTable, ChildDef, RESOURCES, ResourceDef } from "./resource-registry";
 
@@ -10,10 +12,76 @@ export interface ListQuery {
   page?: string;
   pageSize?: string;
   sort?: string; // camelCase column, prefix "-" for desc
-  [key: string]: string | undefined; // extra keys become equality filters
+  /**
+   * Extra keys become filters on any real column:
+   *   ?status=active            equality
+   *   ?status=active&status=draft   IN (…)
+   *   ?createdAt[gte]=2024-01-01    range (also [lte])
+   *   ?shipmentNo[isnull]=false     IS NOT NULL
+   */
+  [key: string]: string | string[] | Record<string, string> | undefined;
 }
 
 const RESERVED_QUERY_KEYS = new Set(["q", "page", "pageSize", "sort"]);
+
+/**
+ * Coerces a raw query-string value to the column's JS type. Without this a
+ * `?stock=abc` or `?active=yes` reaches the driver as a string and fails as an
+ * opaque 500 instead of a 400 the caller can act on.
+ */
+function coerce(col: AnyPgColumn, raw: string, key: string): unknown {
+  const type = col.dataType;
+  if (type === "number") {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) throw new BadRequestException(`Filter "${key}" must be a number`);
+    return n;
+  }
+  if (type === "boolean") {
+    if (raw === "true" || raw === "1") return true;
+    if (raw === "false" || raw === "0") return false;
+    throw new BadRequestException(`Filter "${key}" must be true or false`);
+  }
+  if (type === "date") {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) throw new BadRequestException(`Filter "${key}" must be a date`);
+    return d;
+  }
+  return raw;
+}
+
+/**
+ * Builds the SQL predicate for one `?key=value` filter. Handles the three
+ * shapes Express's query parser can produce: a scalar, a repeated key (array),
+ * and bracket syntax (`?createdAt[gte]=…` → an object).
+ */
+function buildFilter(col: AnyPgColumn, key: string, value: string | string[] | Record<string, string>): SQL | undefined {
+  if (Array.isArray(value)) {
+    const vals = value.filter((v) => v !== "").map((v) => coerce(col, v, key));
+    return vals.length ? inArray(col, vals) : undefined;
+  }
+
+  if (typeof value === "object") {
+    const parts: SQL[] = [];
+    for (const [op, raw] of Object.entries(value)) {
+      if (raw === undefined || raw === "") continue;
+      // `?col[isnull]=true|false` — nullable columns are how several UIs split
+      // records into "assigned" vs "unassigned" buckets.
+      if (op === "isnull") {
+        if (raw === "true" || raw === "1") parts.push(isNull(col));
+        else if (raw === "false" || raw === "0") parts.push(isNotNull(col));
+        else throw new BadRequestException(`Filter "${key}[isnull]" must be true or false`);
+        continue;
+      }
+      const v = coerce(col, raw, key);
+      if (op === "gte") parts.push(gte(col, v));
+      else if (op === "lte") parts.push(lte(col, v));
+      else throw new BadRequestException(`Unsupported operator "${op}" on "${key}" (use gte/lte/isnull)`);
+    }
+    return parts.length ? (and(...parts) as SQL) : undefined;
+  }
+
+  return value === "" ? undefined : eq(col, coerce(col, value, key));
+}
 const READONLY_COLUMNS = new Set(["id", "tenantId", "createdAt", "updatedAt"]);
 /** Internal child columns stripped from API payloads. */
 const HIDDEN_CHILD_COLUMNS = new Set(["tenantId", "sort"]);
@@ -22,7 +90,10 @@ type Row = Record<string, unknown>;
 
 @Injectable()
 export class CrudService {
-  constructor(private readonly tdb: TenantDb) {}
+  constructor(
+    private readonly tdb: TenantDb,
+    private readonly fulfilment: FulfilmentService,
+  ) {}
 
   resolve(resource: string, tenant: TenantDto): ResourceDef {
     const def = RESOURCES[resource];
@@ -40,30 +111,40 @@ export class CrudService {
 
     const filters: SQL[] = [eq(table.tenantId, tenant.id)];
 
-    if (query.q && def.searchable?.length) {
+    if (query.q && typeof query.q === "string" && def.searchable?.length) {
       const likes = def.searchable
         .map((dbName) => Object.values(cols).find((c) => c.name === dbName))
         .filter(Boolean)
-        .map((c) => ilike(c!, `%${query.q}%`));
+        .map((c) => ilike(c!, `%${query.q as string}%`));
       if (likes.length) filters.push(or(...likes)!);
     }
 
-    // ?status=active style equality filters on any real column
+    // Equality / IN / range filters on any real column — see buildFilter.
+    // Keys matching a registered flag apply that predicate instead.
     for (const [key, value] of Object.entries(query)) {
       if (RESERVED_QUERY_KEYS.has(key) || value === undefined) continue;
+
+      const flag = def.flags?.[key];
+      if (flag) {
+        if (value === "true" || value === "1") filters.push(flag);
+        continue;
+      }
+
       const col = cols[key];
-      if (col) filters.push(eq(col, value));
+      if (!col) continue;
+      const predicate = buildFilter(col as AnyPgColumn, key, value);
+      if (predicate) filters.push(predicate);
     }
 
-    let orderExpr: SQL;
-    const sortKey = query.sort?.replace(/^-/, "");
+    const sortRaw = typeof query.sort === "string" ? query.sort : undefined;
+    const sortKey = sortRaw?.replace(/^-/, "");
     const sortCol = sortKey ? cols[sortKey] : undefined;
-    if (sortCol) {
-      orderExpr = (query.sort!.startsWith("-") ? desc(sortCol) : asc(sortCol)) as SQL;
-    } else {
-      const defaultCol = Object.values(cols).find((c) => c.name === (def.orderBy ?? "created_at"));
-      orderExpr = desc(defaultCol ?? cols.id) as SQL;
-    }
+    const primaryOrder: SQL = sortCol
+      ? ((sortRaw!.startsWith("-") ? desc(sortCol) : asc(sortCol)) as SQL)
+      : (desc(Object.values(cols).find((c) => c.name === (def.orderBy ?? "created_at")) ?? cols.id) as SQL);
+    // `id` breaks ties so OFFSET paging can't drop or duplicate rows when the
+    // sort column is non-unique (e.g. ?sort=status).
+    const orderExprs: SQL[] = sortCol?.name === "id" ? [primaryOrder] : [primaryOrder, asc(cols.id) as SQL];
 
     const page = Math.max(1, parseInt(query.page ?? "1", 10) || 1);
     const pageSize = Math.min(200, Math.max(1, parseInt(query.pageSize ?? "50", 10) || 50));
@@ -75,7 +156,7 @@ export class CrudService {
           .select()
           .from(table)
           .where(where)
-          .orderBy(orderExpr)
+          .orderBy(...orderExprs)
           .limit(pageSize)
           .offset((page - 1) * pageSize),
         tx.select({ count: sql<number>`count(*)::int` }).from(table).where(where),
@@ -106,6 +187,15 @@ export class CrudService {
     return this.tdb.forTenant(tenant.id, async (tx) => {
       const [row] = await tx.insert(def.table).values(values as never).returning();
       await this.writeChildren(tx, tenant.id, def.children ?? [], (row as Row).id as string, childInputs);
+
+      // Same transaction on purpose: if the order can't be covered, the
+      // reservation throws and takes the order row with it. That rollback is
+      // the oversell guard — there is no moment where the order exists but
+      // its stock isn't held.
+      if (def.reservesStock && !this.isCancelled(row as Row)) {
+        await this.fulfilment.reserveOrder(tx, tenant.id, (row as Row).id as string);
+      }
+
       const [hydrated] = await this.hydrateMany(tx, def.children, [row as Row]);
       return hydrated;
     });
@@ -119,6 +209,19 @@ export class CrudService {
     }
     values.updatedAt = new Date();
     return this.tdb.forTenant(tenant.id, async (tx) => {
+      // Read first: releasing has to key off the *transition* into cancelled,
+      // not the final value, or re-saving an already-cancelled order would
+      // release a second time.
+      const before = def.reservesStock
+        ? ((
+            await tx
+              .select()
+              .from(def.table)
+              .where(and(eq(def.table.id, id), eq(def.table.tenantId, tenant.id)))
+              .limit(1)
+          )[0] as Row | undefined)
+        : undefined;
+
       const [row] = await tx
         .update(def.table)
         .set(values as never)
@@ -126,9 +229,28 @@ export class CrudService {
         .returning();
       if (!row) throw new NotFoundException(`${resource}/${id} not found`);
       await this.writeChildren(tx, tenant.id, def.children ?? [], id, childInputs, { replace: true });
+
+      if (def.reservesStock && before) {
+        const wasCancelled = this.isCancelled(before);
+        const nowCancelled = this.isCancelled(row as Row);
+        if (!wasCancelled && nowCancelled) {
+          await this.fulfilment.releaseOrder(tx, tenant.id, id, "cancel");
+        } else if (wasCancelled && !nowCancelled) {
+          // Reinstated — put the hold back, and fail loudly if stock has since
+          // gone to someone else rather than quietly reviving an unfillable order.
+          await this.fulfilment.reserveOrder(tx, tenant.id, id);
+        }
+      }
+
       const [hydrated] = await this.hydrateMany(tx, def.children, [row as Row]);
       return hydrated;
     });
+  }
+
+  /** Statuses that mean "this order will not ship", so its holds are freed. */
+  private isCancelled(row: Row): boolean {
+    const status = String(row.deliveryStatus ?? "").toLowerCase();
+    return status === "cancelled" || status === "canceled" || status === "failed";
   }
 
   async remove(tenant: TenantDto, resource: string, id: string) {
