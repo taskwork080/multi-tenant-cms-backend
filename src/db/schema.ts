@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   numeric,
   pgTable,
   primaryKey,
@@ -1220,6 +1221,139 @@ export const cmsBlocks = pgTable(
     ...timestamps,
   },
   (t) => [index("cms_blocks_tenant_idx").on(t.tenantId)],
+);
+
+// --- Storefront (public-facing site) ------------------------------------------------------------------
+//
+// The public storefront is opt-in per tenant: no row here means no storefront,
+// and is_active=false means the site answers "Store Unavailable". This is a
+// different switch from the `cms` entitlement, which only decides whether the
+// tenant can see the Storefront manager inside the admin panel.
+//
+// These are the only jsonb columns in the schema. Everywhere else the shape is
+// known up front and gets its own columns/child tables; a page's blocks are
+// heterogeneous (each type carries its own props), so a relational model would
+// mean either a column per block type or an EAV table. The block payload is
+// never queried by the database — it is read whole and rendered — so jsonb is
+// the honest representation. Shape is enforced in the API layer with zod.
+
+export type StorefrontTheme = {
+  brand: string;
+  brandFg: string;
+  accent: string;
+  bg: string;
+  fg: string;
+  muted: string;
+  fontHeading: string;
+  fontBody: string;
+  radius: number;
+  logoUrl: string | null;
+  faviconUrl: string | null;
+};
+
+export type StorefrontSeo = {
+  title: string;
+  description: string;
+  keywords: string[];
+  ogImageUrl: string | null;
+  twitterHandle: string | null;
+  robots: string; // index,follow | noindex,nofollow
+};
+
+export type BlockType = "hero" | "richtext" | "image" | "imageGrid" | "productGrid" | "cta" | "faq" | "html";
+
+/** One entry in a page's content_blocks array. `props` shape depends on `type`. */
+export type ContentBlock = {
+  id: string;
+  type: BlockType;
+  props: Record<string, unknown>;
+};
+
+/** One entry in a navigation menu. Nesting is one level deep. */
+export type NavItem = {
+  id: string;
+  label: string;
+  href: string;
+  external: boolean;
+  children?: NavItem[];
+};
+
+export const DEFAULT_STOREFRONT_THEME: StorefrontTheme = {
+  brand: "#2563eb",
+  brandFg: "#ffffff",
+  accent: "#f59e0b",
+  bg: "#ffffff",
+  fg: "#0f172a",
+  muted: "#64748b",
+  fontHeading: "Space Grotesk",
+  fontBody: "Schibsted Grotesk",
+  radius: 12,
+  logoUrl: null,
+  faviconUrl: null,
+};
+
+export const DEFAULT_STOREFRONT_SEO: StorefrontSeo = {
+  title: "",
+  description: "",
+  keywords: [],
+  ogImageUrl: null,
+  twitterHandle: null,
+  robots: "index,follow",
+};
+
+/** One row per tenant that has a storefront. Absent row = never configured. */
+export const storefrontConfigs = pgTable(
+  "storefront_configs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    isActive: boolean("is_active").notNull().default(false),
+    customDomain: text("custom_domain"),
+    theme: jsonb("theme").$type<StorefrontTheme>().notNull().default(DEFAULT_STOREFRONT_THEME),
+    seo: jsonb("seo").$type<StorefrontSeo>().notNull().default(DEFAULT_STOREFRONT_SEO),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("storefront_configs_tenant").on(t.tenantId),
+    // Postgres allows many NULLs in a unique index, so tenants without a custom
+    // domain don't collide — but no two tenants can ever claim the same host.
+    uniqueIndex("storefront_configs_domain").on(t.customDomain),
+  ],
+);
+
+/** Tenant-authored pages. Slug "home" is reserved and serves the site root. */
+export const storefrontPages = pgTable(
+  "storefront_pages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    title: text("title").notNull().default(""),
+    slug: text("slug").notNull(),
+    contentBlocks: jsonb("content_blocks").$type<ContentBlock[]>().notNull().default([]),
+    isPublished: boolean("is_published").notNull().default(false),
+    metaTitle: text("meta_title"),
+    metaDescription: text("meta_description"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    index("storefront_pages_tenant_idx").on(t.tenantId),
+    uniqueIndex("storefront_pages_tenant_slug").on(t.tenantId, t.slug),
+  ],
+);
+
+/** Header and footer menus. One row per (tenant, location). */
+export const storefrontNavigation = pgTable(
+  "storefront_navigation",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    location: text("location").notNull().default("header"), // header | footer
+    items: jsonb("items").$type<NavItem[]>().notNull().default([]),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("storefront_navigation_tenant_location").on(t.tenantId, t.location)],
 );
 
 // --- i18n overrides ----------------------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import { HealthController } from "./health.controller";
 import { InventoryModule } from "./inventory/inventory.module";
 import { ProductsModule } from "./products/products.module";
 import { SearchModule } from "./search/search.module";
+import { StorefrontModule } from "./storefront/storefront.module";
 import { TenantModule } from "./tenant/tenant.module";
 import { UploadsModule } from "./uploads/uploads.module";
 import { WorkflowsModule } from "./workflows/workflows.module";
@@ -32,6 +33,7 @@ import { WorkflowsModule } from "./workflows/workflows.module";
     InventoryModule,
     WorkflowsModule,
     ProductsModule,
+    StorefrontModule,
     CrudModule,
   ],
   controllers: [HealthController],
