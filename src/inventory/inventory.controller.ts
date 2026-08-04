@@ -12,6 +12,8 @@ import {
   warehouses,
 } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
+import { CurrentUser } from "../auth/decorators";
+import { actorOf, type AuthUser } from "../auth/auth.types";
 import { CurrentTenant } from "../tenant/tenant.decorator";
 import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
@@ -123,7 +125,7 @@ export class InventoryController {
     description:
       "Creates one SKU per variant plus a default SKU, applies any codes/barcodes entered in the wizard, and archives SKUs whose variant was deleted (never hard-deletes — movements reference them).",
   })
-  async generateSkus(@CurrentTenant() tenant: TenantDto, @Body() body: unknown) {
+  async generateSkus(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Body() body: unknown) {
     const input = generateSkusSchema.parse(body);
     return this.tdb.forTenant(tenant.id, async (tx) => {
       const before = await tx
@@ -151,7 +153,7 @@ export class InventoryController {
     summary: "Edit a SKU's code, barcode or threshold",
     description: "Validates uniqueness up front so a clash reads as a 409 rather than a raw constraint error.",
   })
-  async patchSku(@CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
+  async patchSku(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Param("id") id: string, @Body() body: unknown) {
     const input = patchSkuSchema.parse(body);
     return this.tdb.forTenant(tenant.id, async (tx) => {
       const [current] = await tx
@@ -191,7 +193,7 @@ export class InventoryController {
     description: "What order entry should cap quantities against — never products.stock, which is only a mirror.",
   })
   async getAvailability(
-    @CurrentTenant() tenant: TenantDto,
+    @CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto,
     @Query("skuId") skuId?: string,
     @Query("productId") productId?: string,
   ) {
@@ -223,7 +225,7 @@ export class InventoryController {
     description:
       "Superset of the original {products, totalUnits, low, out} payload — the extra keys are additive so the existing page keeps working.",
   })
-  async stats(@CurrentTenant() tenant: TenantDto) {
+  async stats(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto) {
     return this.tdb.forTenant(tenant.id, (tx) => this.statsIn(tx, tenant.id));
   }
 
@@ -278,7 +280,7 @@ export class InventoryController {
     summary: "Everything the Inventory overview page renders",
     description: "One request rather than a dozen list calls — mirrors how DashboardService composes its payload.",
   })
-  async overview(@CurrentTenant() tenant: TenantDto, @Query("period") period?: string) {
+  async overview(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Query("period") period?: string) {
     const days = period === "30" ? 30 : 7;
     // ISO string, not a Date: postgres.js can serialize a Date through the
     // typed query builder (which knows the column type) but not as a bare
@@ -357,7 +359,7 @@ export class InventoryController {
 
   @Get("movements")
   @ApiOperation({ summary: "Recent movements for one SKU (drawer timeline)" })
-  async movements(@CurrentTenant() tenant: TenantDto, @Query("skuId") skuId: string, @Query("limit") limit?: string) {
+  async movements(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Query("skuId") skuId: string, @Query("limit") limit?: string) {
     const take = Math.min(Number(limit) || 20, 100);
     return this.tdb.forTenant(tenant.id, async (tx) =>
       tx
@@ -377,7 +379,7 @@ export class InventoryController {
     description:
       "Raises on-hand and appends a `receive` movement per line. Accepts the legacy flat {productId, quantity} body, which resolves to the product's default SKU.",
   })
-  async receive(@CurrentTenant() tenant: TenantDto, @Body() body: unknown) {
+  async receive(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Body() body: unknown) {
     const input = receiveSchema.parse(body);
 
     return this.tdb.forTenant(tenant.id, async (tx) => {
@@ -415,6 +417,7 @@ export class InventoryController {
 
       await this.inventory.syncProductStock(tx, tenant.id, touched);
       await this.inventory.writeActivity(tx, tenant.id, {
+        actor: actorOf(user),
         action: "Received stock",
         target: `${lines.reduce((n, l) => n + l.qty, 0)} units`,
       });
@@ -429,7 +432,7 @@ export class InventoryController {
     description:
       "SKU-level `lines` (signed toward on_hand) or the legacy product-level `changes` (positive consumes). Both now write ledger rows; the legacy path previously wrote none.",
   })
-  async adjust(@CurrentTenant() tenant: TenantDto, @Body() body: unknown): Promise<{ warnings: string[] }> {
+  async adjust(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Body() body: unknown): Promise<{ warnings: string[] }> {
     const input = adjustSchema.parse(body);
 
     return this.tdb.forTenant(tenant.id, async (tx) => {

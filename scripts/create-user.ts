@@ -1,5 +1,5 @@
 /**
- * Creates (or fixes up) a Supabase Auth user for this CMS.
+ * Creates a user for this CMS from the command line.
  *
  *   npm run user:create -- <email> <password> <tenant-slug|platform_admin> [role]
  *
@@ -7,12 +7,31 @@
  *   npm run user:create -- owner@volt.test Passw0rd! volt owner
  *   npm run user:create -- root@cms.test Passw0rd! platform_admin
  *
- * Signs the user up through the public auth API, then (via the direct DB
- * connection) confirms the email and stamps app_metadata.role/tenant_id —
- * the claims the backend's AuthGuard + TenantGuard read from the JWT.
+ * Two modes:
+ *
+ *  - Tenant user: goes through PlatformUsersService, the same code path as
+ *    POST /api/admin/users, so it creates the Supabase identity AND the
+ *    staff_users row with auth_user_id populated. (The previous version of
+ *    this script only did the former, which is where "ghost" CMS accounts
+ *    that can never sign in came from.)
+ *
+ *  - Bootstrap platform admin: there is no admin yet to authorise the call,
+ *    and a platform admin has no tenant, so no staff_users row applies. This
+ *    path talks to Supabase Admin + auth.users directly.
  */
 import "dotenv/config";
+import { Logger } from "@nestjs/common";
+import { NestFactory } from "@nestjs/core";
 import postgres from "postgres";
+import { AppModule } from "../src/app.module";
+import { SupabaseAdminService } from "../src/auth/supabase-admin.service";
+import { TenantDb } from "../src/db/tenant-db.service";
+import { tenants } from "../src/db/schema";
+import { PlatformUsersService } from "../src/platform/platform-users.service";
+import type { AuditCtx } from "../src/platform/audit.service";
+import { eq } from "drizzle-orm";
+
+const CLI_CTX: AuditCtx = { actorId: "", actorEmail: "cli:user:create", userAgent: "npm run user:create" };
 
 async function main() {
   const [email, password, target, roleArg] = process.argv.slice(2);
@@ -21,64 +40,78 @@ async function main() {
     process.exit(1);
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-  const dbUrl = process.env.DATABASE_URL;
-  if (!supabaseUrl || !anonKey || !dbUrl) {
-    console.error("SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY and DATABASE_URL must be set in .env");
-    process.exit(1);
-  }
+  Logger.overrideLogger(["error", "warn"]);
+  const app = await NestFactory.createApplicationContext(AppModule, { logger: ["error", "warn"] });
 
-  const sql = postgres(dbUrl, { prepare: false, max: 1 });
   try {
-    // 1. Resolve the tenant (unless creating a platform admin).
-    let appMeta: Record<string, string>;
     if (target === "platform_admin") {
-      appMeta = { role: "platform_admin" };
-    } else {
-      const rows = await sql`select id from tenants where slug = ${target} limit 1`;
-      if (rows.length === 0) {
-        console.error(`Tenant with slug "${target}" not found.`);
-        process.exit(1);
-      }
-      appMeta = { role: roleArg ?? "owner", tenant_id: rows[0].id as string };
+      await bootstrapPlatformAdmin(app.get(SupabaseAdminService), email, password);
+      return;
     }
 
-    // 2. Sign the user up (no-op with a clear message if they already exist).
-    const res = await fetch(`${supabaseUrl}/auth/v1/signup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: anonKey },
-      body: JSON.stringify({ email, password }),
-    });
-    const body = (await res.json()) as { id?: string; msg?: string; message?: string; error_description?: string };
-    if (!res.ok) {
-      const msg = body.msg ?? body.message ?? body.error_description ?? `HTTP ${res.status}`;
-      if (/already|exists/i.test(String(msg))) {
-        console.log(`User ${email} already exists — updating metadata only.`);
-      } else {
-        console.error(`Signup failed: ${msg}`);
-        process.exit(1);
-      }
-    }
-
-    // 3. Confirm the email + stamp app_metadata (JWT claims) directly in auth.users.
-    const updated = await sql`
-      update auth.users
-      set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || ${sql.json(appMeta)},
-          email_confirmed_at = coalesce(email_confirmed_at, now())
-      where email = ${email}
-      returning id
-    `;
-    if (updated.length === 0) {
-      console.error(`No auth.users row found for ${email} — signup may not have completed.`);
+    const tdb = app.get(TenantDb);
+    const [tenant] = await tdb.raw.select().from(tenants).where(eq(tenants.slug, target)).limit(1);
+    if (!tenant) {
+      console.error(`Tenant with slug "${target}" not found.`);
       process.exit(1);
     }
 
-    console.log(`✔ ${email} ready (user ${updated[0].id})`);
-    console.log(`  app_metadata: ${JSON.stringify(appMeta)}`);
+    const users = app.get(PlatformUsersService);
+    const { user } = await users.create(
+      {
+        tenantId: tenant.id,
+        name: email.split("@")[0],
+        email,
+        appRole: roleArg ?? "owner",
+        sendInvite: false,
+        password,
+      },
+      CLI_CTX,
+    );
+
+    console.log(`✔ ${email} ready (staff ${user.id}, auth ${user.authUserId})`);
+    console.log(`  workspace: ${tenant.name} (${tenant.slug}) · app role: ${roleArg ?? "owner"}`);
   } finally {
-    await sql.end();
+    await app.close();
   }
+}
+
+/**
+ * First-boot only: no platform admin exists to authorise this, so it bypasses
+ * the normal service. A platform admin belongs to no tenant, so there is no
+ * staff_users row to create.
+ */
+async function bootstrapPlatformAdmin(supabase: SupabaseAdminService, email: string, password: string) {
+  const appMetadata = { role: "platform_admin" };
+  let id: string;
+  try {
+    const created = await supabase.createUser({ email, password, emailConfirm: true, appMetadata });
+    id = created.id;
+  } catch {
+    const existing = await supabase.findByEmail(email);
+    if (!existing) {
+      console.error(`Could not create or find an auth user for ${email}.`);
+      process.exit(1);
+    }
+    await supabase.updateUserById(existing.id, { password, app_metadata: appMetadata, email_confirm: true });
+    id = existing.id;
+    console.log(`User ${email} already existed — promoted to platform_admin.`);
+  }
+
+  // GoTrue's admin API confirms the email for us above; this is a belt-and-
+  // braces fixup for accounts created through the public signup endpoint.
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl) {
+    const sql = postgres(dbUrl, { prepare: false, max: 1 });
+    try {
+      await sql`update auth.users set email_confirmed_at = coalesce(email_confirmed_at, now()) where id = ${id}::uuid`;
+    } finally {
+      await sql.end();
+    }
+  }
+
+  console.log(`✔ ${email} ready (auth ${id})`);
+  console.log(`  app_metadata: ${JSON.stringify(appMetadata)}`);
 }
 
 void main();

@@ -71,6 +71,13 @@
       "when": 1785568879927,
       "tag": "0009_storefront_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785600000000,
+      "tag": "0008_platform_admin",
+      "breakpoints": true
     }
   ]
 }
