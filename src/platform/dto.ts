@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AUDIT_ACTIONS, AUDIT_TARGET_TYPES } from "./audit.actions";
+import { MODULE_KEYS, TENANT_TYPES } from "./module-presets";
 
 /**
  * Request schemas for /api/admin/*.
@@ -90,11 +91,32 @@ const tenantConfigSchema = z
 export const adminTenantPatchSchema = z
   .object({
     name: z.string().trim().min(1).optional(),
-    type: z.enum(["ecommerce", "warehouse", "marketplace"]).optional(),
+    type: z.enum(TENANT_TYPES).optional(),
     region: z.string().optional(),
     theme: z.object({ brand: z.string(), brandFg: z.string() }).partial().optional(),
-    entitlements: z.array(z.string()).optional(),
+    // Closed set: an unknown module is a dead tenant_entitlements row nothing
+    // will ever match, so reject it here instead of storing it.
+    entitlements: z.array(z.enum(MODULE_KEYS)).optional(),
     config: tenantConfigSchema.optional(),
+  })
+  .strict();
+
+/**
+ * Workspace lifecycle. Deliberately NOT part of adminTenantPatchSchema: a
+ * status change cuts off every user of the workspace, so it goes through its
+ * own audited endpoint rather than riding along on a generic edit.
+ */
+export const TENANT_STATUSES = ["active", "suspended", "archived"] as const;
+
+export const adminTenantStatusSchema = z
+  .object({
+    status: z.enum(TENANT_STATUSES),
+    reason: z.string().trim().max(500).optional(),
+    // Suspending a workspace does not invalidate anyone's existing GoTrue
+    // token — TenantGuard rejects them on their next request instead. Banning
+    // each user is the only thing that kills live sessions, and it is N
+    // non-atomic calls that "restore workspace" does not undo, so it is opt-in.
+    suspendUsers: z.boolean().default(false),
   })
   .strict();
 
@@ -114,8 +136,39 @@ export const adminTenantCreateSchema = adminTenantPatchSchema.extend({
     .regex(/^[a-z0-9-]+$/, "Use lowercase letters, numbers and hyphens only")
     .refine((s) => !RESERVED_TENANT_SLUGS.has(s), "That slug is reserved by the platform"),
   name: z.string().trim().min(1),
-  type: z.enum(["ecommerce", "warehouse", "marketplace"]),
+  type: z.enum(TENANT_TYPES),
 });
+
+// --- Platform admins -------------------------------------------------------
+
+export const promoteAdminSchema = z
+  .object({
+    staffUserId: uuid,
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
+/**
+ * Demotion needs a destination. Dropping the platform role on its own would
+ * leave a login that belongs to no workspace and can therefore reach nothing.
+ */
+export const demoteAdminSchema = z
+  .object({
+    tenantId: uuid,
+    appRole: z.enum(APP_ROLES),
+    roleId: uuid.nullable().optional(),
+    name: z.string().trim().min(1).max(120).optional(),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
+export const adminListSchema = z
+  .object({
+    q: z.string().trim().optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  })
+  .passthrough();
 
 // --- Roles -----------------------------------------------------------------
 
@@ -176,6 +229,8 @@ export const auditListSchema = z
 export const tenantListSchema = z
   .object({
     q: z.string().trim().optional(),
+    status: multi,
+    type: multi,
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(200).default(50),
     sort: z.string().optional(),

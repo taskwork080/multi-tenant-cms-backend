@@ -594,7 +594,7 @@ export class PlatformUsersService {
     return this.config.get<string>("FRONTEND_URL") ?? "http://localhost:5000";
   }
 
-  private async load(id: string): Promise<StaffRow> {
+  async load(id: string): Promise<StaffRow> {
     return this.tdb.asPlatform(async (tx) => {
       const [row] = await tx.select().from(staffUsers).where(eq(staffUsers.id, id)).limit(1);
       if (!row) throw new NotFoundException("User not found");
@@ -632,7 +632,7 @@ export class PlatformUsersService {
    * roles.id is globally unique, so the FK alone happily accepts a role from
    * another tenant. Check membership explicitly.
    */
-  private async assertRoleInTenant(tx: Db, roleId: string | null, tenantId: string) {
+  async assertRoleInTenant(tx: Db, roleId: string | null, tenantId: string) {
     if (!roleId) return;
     const [row] = await tx
       .select({ id: roles.id })
@@ -653,15 +653,23 @@ export class PlatformUsersService {
     });
   }
 
-  /** A super admin must not be able to lock themselves out. */
-  private assertNotSelf(ctx: AuditCtx, target: { authUserId: string | null }, verb: string) {
+  /**
+   * A super admin must not be able to lock themselves out.
+   * Public because PlatformAdminsService enforces the same rule on promote and
+   * demote — the guard must not have two implementations.
+   */
+  assertNotSelf(ctx: AuditCtx, target: { authUserId: string | null }, verb: string) {
     if (target.authUserId && ctx.actorId && target.authUserId === ctx.actorId) {
       throw new ForbiddenException(`You cannot ${verb}`);
     }
   }
 
-  /** Nor may the last platform admin be disabled, leaving nobody in control. */
-  private async assertNotLastPlatformAdmin(target: StaffRow, verb: string) {
+  /**
+   * Nor may the last platform admin be disabled, leaving nobody in control.
+   * The param is deliberately structural, not StaffRow: a demote target may be
+   * the CLI-bootstrapped root admin, who has no staff_users row at all.
+   */
+  async assertNotLastPlatformAdmin(target: { authUserId: string | null }, verb: string) {
     if (!target.authUserId) return;
     const appRole = await this.currentAppRole(target.authUserId);
     if (appRole !== "platform_admin") return;
@@ -672,7 +680,7 @@ export class PlatformUsersService {
     if (n <= 1) throw new ForbiddenException(`You cannot ${verb} the last platform admin`);
   }
 
-  private async currentAppRole(authUserId: string | null): Promise<string> {
+  async currentAppRole(authUserId: string | null): Promise<string> {
     if (!authUserId) return "staff";
     try {
       const u = await this.supabase.getUserById(authUserId);
@@ -686,7 +694,7 @@ export class PlatformUsersService {
    * Mirror of the audit row in the tenant's own feed, so a workspace can see
    * that the platform touched one of its accounts.
    */
-  private async writeTenantActivity(tx: Db, tenantId: string, ctx: AuditCtx, action: string, target: string) {
+  async writeTenantActivity(tx: Db, tenantId: string, ctx: AuditCtx, action: string, target: string) {
     await tx.insert(activities).values({
       tenantId,
       actor: ctx.actorEmail || "platform",

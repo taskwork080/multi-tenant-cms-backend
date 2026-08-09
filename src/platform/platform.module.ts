@@ -3,7 +3,9 @@ import { PLATFORM_ADMIN } from "../auth/auth.types";
 import { ROLES } from "../auth/decorators";
 import { AuthEventsController, AuthEventsService } from "./auth-events.controller";
 import { AuditService } from "./audit.service";
+import { PlatformAdminsController, PlatformAdminsService } from "./platform-admins.controller";
 import { PlatformAuditController, PlatformAuditService } from "./platform-audit.controller";
+import { PlatformOverviewController, PlatformOverviewService } from "./platform-overview.controller";
 import { PlatformRolesController, PlatformRolesService } from "./platform-roles.controller";
 import { PlatformTenantsController, PlatformTenantsService } from "./platform-tenants.controller";
 import { PlatformUsersController } from "./platform-users.controller";
@@ -33,6 +35,8 @@ import { PlatformUsersService } from "./platform-users.service";
     PlatformUsersController,
     PlatformTenantsController,
     PlatformRolesController,
+    PlatformAdminsController,
+    PlatformOverviewController,
     PlatformAuditController,
     AuthEventsController,
   ],
@@ -41,6 +45,8 @@ import { PlatformUsersService } from "./platform-users.service";
     PlatformUsersService,
     PlatformTenantsService,
     PlatformRolesService,
+    PlatformAdminsService,
+    PlatformOverviewService,
     PlatformAuditService,
     AuthEventsService,
   ],
@@ -51,7 +57,16 @@ export class PlatformModule {
     // Invariant 1, enforced at boot rather than in a test: a missing decorator
     // is silent, and the repo has no test runner to catch it. Failing to start
     // is the correct response to "these routes are currently unguarded".
-    const guarded = [PlatformUsersController, PlatformTenantsController, PlatformRolesController, PlatformAuditController];
+    // Every controller in this module except AuthEventsController belongs here.
+    // The check only inspects what is listed, so an omission is silent.
+    const guarded = [
+      PlatformUsersController,
+      PlatformTenantsController,
+      PlatformRolesController,
+      PlatformAdminsController,
+      PlatformOverviewController,
+      PlatformAuditController,
+    ];
     const unguarded = guarded.filter((c) => !(Reflect.getMetadata(ROLES, c) ?? []).includes(PLATFORM_ADMIN));
     if (unguarded.length) {
       throw new Error(

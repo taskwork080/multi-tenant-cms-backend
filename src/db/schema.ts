@@ -39,6 +39,7 @@ export const tenants = pgTable("tenants", {
   slug: text("slug").notNull().unique(),
   name: text("name").notNull(),
   type: text("type").notNull(), // ecommerce | warehouse | marketplace
+  status: text("status").notNull().default("active"), // active | suspended | archived
   region: text("region").notNull().default(""),
   // theme
   themeBrand: text("theme_brand").notNull().default("#2563eb"),

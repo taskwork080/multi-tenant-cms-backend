@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiBody, ApiOperation, ApiParam, ApiTags } from "@nestjs
 import { z } from "zod";
 import { Roles } from "../auth/decorators";
 import { RESERVED_TENANT_SLUGS } from "../platform/dto";
+import { MODULE_KEYS, TENANT_TYPES, presetFor } from "../platform/module-presets";
 import { TenantGuard } from "./tenant.guard";
 import { TenantService } from "./tenant.service";
 
@@ -25,10 +26,13 @@ const configSchema = z
 const tenantPatchSchema = z
   .object({
     name: z.string().min(1).optional(),
-    type: z.enum(["ecommerce", "warehouse", "marketplace"]).optional(),
+    type: z.enum(TENANT_TYPES).optional(),
     region: z.string().optional(),
     theme: z.object({ brand: z.string(), brandFg: z.string() }).partial().optional(),
-    entitlements: z.array(z.string()).optional(),
+    // Same closed set as the platform surface (src/platform/dto.ts) — if only
+    // one side validated, a tenant owner could write modules a platform admin
+    // could not.
+    entitlements: z.array(z.enum(MODULE_KEYS)).optional(),
     config: configSchema.optional(),
   })
   .strict();
@@ -42,7 +46,7 @@ const tenantCreateSchema = tenantPatchSchema.extend({
     // platform routes; the others shadow top-level API paths the same way.
     .refine((s) => !RESERVED_TENANT_SLUGS.has(s), "That slug is reserved by the platform"),
   name: z.string().min(1),
-  type: z.enum(["ecommerce", "warehouse", "marketplace"]),
+  type: z.enum(TENANT_TYPES),
 });
 
 @ApiTags("tenants")
@@ -63,7 +67,10 @@ export class TenantsController {
   @ApiOperation({ summary: "Create a tenant (platform admin only)" })
   @ApiBody({ description: "Tenant shape: { slug, name, type, region?, theme?, entitlements?, config? }" })
   create(@Body() body: unknown) {
-    return this.tenants.create(tenantCreateSchema.parse(body));
+    const input = tenantCreateSchema.parse(body);
+    // No entitlements given => start from the preset for this tenant type
+    // rather than a workspace with an empty sidebar.
+    return this.tenants.create({ ...input, entitlements: input.entitlements ?? presetFor(input.type) });
   }
 
   @Get(":tenant")

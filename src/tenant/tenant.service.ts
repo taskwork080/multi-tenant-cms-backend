@@ -11,6 +11,8 @@ export interface TenantDto {
   slug: string;
   name: string;
   type: string;
+  /** active | suspended | archived — enforced in TenantGuard. */
+  status: string;
   region: string;
   theme: { brand: string; brandFg: string };
   entitlements: string[];
@@ -35,6 +37,7 @@ export interface TenantInput {
   slug?: string;
   name?: string;
   type?: string;
+  status?: string;
   region?: string;
   theme?: { brand?: string; brandFg?: string };
   entitlements?: string[];
@@ -55,6 +58,7 @@ export class TenantService {
       slug: row.slug,
       name: row.name,
       type: row.type,
+      status: row.status,
       region: row.region,
       theme: { brand: row.themeBrand, brandFg: row.themeBrandFg },
       entitlements,
@@ -79,7 +83,7 @@ export class TenantService {
   /** Flattens the nested API shape onto tenants-table columns. */
   private toColumns(input: TenantInput): Partial<TenantRow> {
     const out: Record<string, unknown> = {};
-    for (const key of ["slug", "name", "type", "region"] as const) {
+    for (const key of ["slug", "name", "type", "status", "region"] as const) {
       if (input[key] !== undefined) out[key] = input[key];
     }
     if (input.theme?.brand !== undefined) out.themeBrand = input.theme.brand;

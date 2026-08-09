@@ -78,6 +78,13 @@
       "when": 1785600000000,
       "tag": "0008_platform_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785700000000,
+      "tag": "0010_platform_expansion",
+      "breakpoints": true
     }
   ]
 }

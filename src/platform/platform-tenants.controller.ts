@@ -1,13 +1,15 @@
-import { Body, Controller, Get, Injectable, Param, Patch, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Injectable, Param, Patch, Post, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
-import { asc, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { PLATFORM_ADMIN } from "../auth/auth.types";
 import { Roles } from "../auth/decorators";
 import { TenantDb } from "../db/tenant-db.service";
-import { staffUsers, tenantEntitlements, tenants } from "../db/schema";
+import { platformAuditLog, roles, staffUsers, tenantEntitlements, tenants } from "../db/schema";
 import { TenantService } from "../tenant/tenant.service";
 import { Audit, AuditService, type AuditCtx } from "./audit.service";
-import { adminTenantCreateSchema, adminTenantPatchSchema, tenantListSchema } from "./dto";
+import { adminTenantCreateSchema, adminTenantPatchSchema, adminTenantStatusSchema, tenantListSchema } from "./dto";
+import { MODULE_KEYS, MODULE_PRESETS, presetFor } from "./module-presets";
+import { PlatformUsersService } from "./platform-users.service";
 
 @Injectable()
 export class PlatformTenantsService {
@@ -15,11 +17,22 @@ export class PlatformTenantsService {
     private readonly tdb: TenantDb,
     private readonly tenantSvc: TenantService,
     private readonly audit: AuditService,
+    private readonly users: PlatformUsersService,
   ) {}
 
   async list(query: unknown) {
     const q = tenantListSchema.parse(query);
-    const where = q.q ? or(ilike(tenants.name, `%${q.q}%`), ilike(tenants.slug, `%${q.q}%`)) : undefined;
+    const filters: SQL[] = [];
+    if (q.q) filters.push(or(ilike(tenants.name, `%${q.q}%`), ilike(tenants.slug, `%${q.q}%`))!);
+    if (q.status) {
+      const v = Array.isArray(q.status) ? q.status : [q.status];
+      filters.push(v.length === 1 ? eq(tenants.status, v[0]) : inArray(tenants.status, v));
+    }
+    if (q.type) {
+      const v = Array.isArray(q.type) ? q.type : [q.type];
+      filters.push(v.length === 1 ? eq(tenants.type, v[0]) : inArray(tenants.type, v));
+    }
+    const where = filters.length ? and(...filters) : undefined;
     const offset = (q.page - 1) * q.pageSize;
 
     return this.tdb.asPlatform(async (tx) => {
@@ -57,6 +70,7 @@ export class PlatformTenantsService {
           slug: row.slug,
           name: row.name,
           type: row.type,
+          status: row.status,
           region: row.region,
           theme: { brand: row.themeBrand, brandFg: row.themeBrandFg },
           entitlements: (byTenant.get(row.id) ?? []).sort(),
@@ -87,17 +101,102 @@ export class PlatformTenantsService {
 
   async create(body: unknown, ctx: AuditCtx) {
     const input = adminTenantCreateSchema.parse(body);
-    const dto = await this.tenantSvc.create(input);
+    // An omitted entitlements array means "give me the sensible default for
+    // this kind of business" — otherwise the workspace opens with an empty
+    // sidebar. An explicit [] is still honoured as a deliberate empty set.
+    const presetApplied = input.entitlements === undefined;
+    const dto = await this.tenantSvc.create(
+      presetApplied ? { ...input, entitlements: presetFor(input.type) } : input,
+    );
     await this.tdb.asPlatform((tx) =>
       this.audit.record(tx, ctx, {
         action: "tenant.create",
         targetType: "tenant",
         targetId: dto.id,
         tenantId: dto.id,
-        after: { slug: dto.slug, name: dto.name, type: dto.type, entitlements: dto.entitlements },
+        after: {
+          slug: dto.slug,
+          name: dto.name,
+          type: dto.type,
+          entitlements: dto.entitlements,
+          // Records *why* the workspace ended up with these modules.
+          presetApplied,
+        },
       }),
     );
     return dto;
+  }
+
+  /**
+   * Workspace lifecycle. Separate from update() because it closes the
+   * workspace to every one of its members, and that deserves its own audit
+   * action and its own confirmation in the UI.
+   */
+  async setStatus(id: string, body: unknown, ctx: AuditCtx) {
+    const input = adminTenantStatusSchema.parse(body);
+    const before = await this.tenantSvc.byId(id);
+
+    const dto = await this.tenantSvc.update(before.slug, { status: input.status });
+    // TenantService caches slug -> tenant for 30s. update() invalidates the
+    // calling process's copy; other instances keep serving the old status for
+    // up to the TTL. Documented in TenantGuard.
+    this.tenantSvc.invalidate(before.slug);
+
+    await this.tdb.asPlatform((tx) =>
+      this.audit.record(tx, ctx, {
+        action: "tenant.status",
+        targetType: "tenant",
+        targetId: id,
+        tenantId: id,
+        before: { status: before.status },
+        after: { status: input.status, reason: input.reason, suspendUsers: input.suspendUsers },
+      }),
+    );
+
+    // Opt-in, because it is the only thing that kills live sessions: the status
+    // flag alone is enforced on the *next* request, not against a token already
+    // in flight. N sequential GoTrue calls, not atomic, and restoring the
+    // workspace does not un-ban anyone — each user must be restored explicitly.
+    let usersAffected = 0;
+    if (input.suspendUsers && input.status !== "active") {
+      const staff = await this.tdb.asPlatform((tx) =>
+        tx.select({ id: staffUsers.id }).from(staffUsers).where(eq(staffUsers.tenantId, id)),
+      );
+      for (const s of staff) {
+        try {
+          await this.users.setStatus(s.id, { action: "suspend", reason: input.reason }, ctx);
+          usersAffected += 1;
+        } catch {
+          // A self/last-admin guard refusal must not abort the rest of the
+          // workspace; the workspace status change has already committed.
+        }
+      }
+    }
+
+    return { ...dto, usersAffected };
+  }
+
+  /**
+   * Entering a workspace as a super admin. This grants nothing — TenantGuard
+   * already admits a platform admin to every slug — it makes the crossing
+   * deliberate and puts a row in the audit log.
+   */
+  async impersonate(id: string, start: boolean, body: unknown, ctx: AuditCtx) {
+    const tenant = await this.tenantSvc.byId(id);
+    const reason = typeof (body as { reason?: unknown })?.reason === "string" ? (body as { reason: string }).reason : undefined;
+    if (start && tenant.status === "archived") {
+      throw new BadRequestException("This workspace is archived. Restore it before entering.");
+    }
+    await this.tdb.asPlatform((tx) =>
+      this.audit.record(tx, ctx, {
+        action: start ? "tenant.impersonate_start" : "tenant.impersonate_end",
+        targetType: "tenant",
+        targetId: id,
+        tenantId: id,
+        after: { slug: tenant.slug, name: tenant.name, reason },
+      }),
+    );
+    return tenant;
   }
 
   async update(id: string, body: unknown, ctx: AuditCtx) {
@@ -120,8 +219,44 @@ export class PlatformTenantsService {
     return dto;
   }
 
+  /**
+   * Detail payload for /platform/tenants/[id]. The users / roles / audit tabs
+   * on that page use the existing list endpoints with a tenantId filter, so
+   * this only has to carry the summary the header needs.
+   */
   async get(id: string) {
-    return this.tenantSvc.byId(id);
+    const dto = await this.tenantSvc.byId(id);
+    const extra = await this.tdb.asPlatform(async (tx) => {
+      const [byStatus, [roleCount], recentAudit] = await Promise.all([
+        tx
+          .select({ status: staffUsers.status, n: sql<number>`count(*)::int` })
+          .from(staffUsers)
+          .where(eq(staffUsers.tenantId, id))
+          .groupBy(staffUsers.status),
+        tx.select({ n: sql<number>`count(*)::int` }).from(roles).where(eq(roles.tenantId, id)),
+        tx
+          .select({
+            id: platformAuditLog.id,
+            actorEmail: platformAuditLog.actorEmail,
+            action: platformAuditLog.action,
+            targetType: platformAuditLog.targetType,
+            targetId: platformAuditLog.targetId,
+            createdAt: platformAuditLog.createdAt,
+          })
+          .from(platformAuditLog)
+          .where(eq(platformAuditLog.tenantId, id))
+          .orderBy(desc(platformAuditLog.createdAt))
+          .limit(20),
+      ]);
+      const usersByStatus = Object.fromEntries(byStatus.map((r) => [r.status, r.n]));
+      return {
+        usersByStatus,
+        userCount: byStatus.reduce((sum, r) => sum + r.n, 0),
+        roleCount: roleCount?.n ?? 0,
+        recentAudit,
+      };
+    });
+    return { ...dto, ...extra, entitlementCount: dto.entitlements.length };
   }
 
   /** Slug lookup helper for the tenant-scoped ids the frontend already holds. */
@@ -146,8 +281,16 @@ export class PlatformTenantsController {
     return this.svc.list(query);
   }
 
+  // Declared BEFORE @Get(":id") — Nest matches in declaration order, and
+  // "module-presets" would otherwise be read as a workspace id.
+  @Get("module-presets")
+  @ApiOperation({ summary: "Default modules per tenant type, and the full module list" })
+  presets() {
+    return { presets: MODULE_PRESETS, allModules: MODULE_KEYS };
+  }
+
   @Get(":id")
-  @ApiOperation({ summary: "Get a workspace by id" })
+  @ApiOperation({ summary: "Get a workspace by id, with its user/role counts and recent audit" })
   get(@Param("id") id: string) {
     return this.svc.get(id);
   }
@@ -162,5 +305,23 @@ export class PlatformTenantsController {
   @ApiOperation({ summary: "Update a workspace (slug is immutable)" })
   update(@Param("id") id: string, @Body() body: unknown, @Audit() ctx: AuditCtx) {
     return this.svc.update(id, body, ctx);
+  }
+
+  @Patch(":id/status")
+  @ApiOperation({ summary: "Suspend, archive or restore a workspace" })
+  setStatus(@Param("id") id: string, @Body() body: unknown, @Audit() ctx: AuditCtx) {
+    return this.svc.setStatus(id, body, ctx);
+  }
+
+  @Post(":id/impersonate")
+  @ApiOperation({ summary: "Begin a 'view as tenant' session (audited)" })
+  impersonate(@Param("id") id: string, @Body() body: unknown, @Audit() ctx: AuditCtx) {
+    return this.svc.impersonate(id, true, body, ctx);
+  }
+
+  @Post(":id/impersonate/stop")
+  @ApiOperation({ summary: "End a 'view as tenant' session (audited)" })
+  stopImpersonating(@Param("id") id: string, @Body() body: unknown, @Audit() ctx: AuditCtx) {
+    return this.svc.impersonate(id, false, body, ctx);
   }
 }
