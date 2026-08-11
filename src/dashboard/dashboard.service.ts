@@ -10,6 +10,7 @@ import {
   returnRequests,
   shipments,
 } from "../db/schema";
+import { previousWindow, type DateWindow } from "../common/date-window";
 import { TenantDb } from "../db/tenant-db.service";
 import type { TenantDto } from "../tenant/tenant.service";
 
@@ -48,18 +49,40 @@ export interface WindowStats {
 export class DashboardService {
   constructor(private readonly tdb: TenantDb) {}
 
-  async stats(tenant: TenantDto, period: Period = "30") {
+  async stats(tenant: TenantDto, period: Period = "30", window: DateWindow = { from: null, to: null }) {
     const days = period === "all" ? null : Number(period);
-    const now = Date.now();
-    // "all" compares the most recent half of history against the older half,
-    // matching what the page used to do client-side.
-    const curFrom = days ? new Date(now - days * DAY_MS) : null;
-    const prevFrom = days ? new Date(now - 2 * days * DAY_MS) : null;
+    const now = new Date();
+
+    // An explicit from/to wins; otherwise fall back to the trailing preset.
+    // NOTE: "all" (days === null) leaves both windows open-ended, so `previous`
+    // equals `current` and every delta renders 0%. That is pre-existing
+    // behaviour — the deltas are simply not meaningful for "all time".
+    const cur: DateWindow =
+      window.from || window.to
+        ? window
+        : { from: days ? new Date(now.getTime() - days * DAY_MS) : null, to: null };
+    const prev = previousWindow(cur, now);
+
+    // Bucket by month once a window is long enough that a daily series would be
+    // unreadable. 'YYYY-MM-DD' rather than 'MM-DD' because arbitrary ranges can
+    // now span a year boundary, where 'MM-DD' silently folds the two together.
+    const spanDays = cur.from ? ((cur.to ?? now).getTime() - cur.from.getTime()) / DAY_MS : Infinity;
+    const granularity: "day" | "month" = spanDays > 92 ? "month" : "day";
 
     return this.tdb.forTenant(tenant.id, async (tx) => {
       const t = eq(orders.tenantId, tenant.id);
+      /** Tenant scope + the current window, for the queries that report on it. */
+      const inWindow = and(
+        t,
+        ...(cur.from ? [gte(orders.createdAt, cur.from)] : []),
+        ...(cur.to ? [lt(orders.createdAt, cur.to)] : []),
+      );
 
-      /** Revenue is summed from line items so it matches the old client math. */
+      /**
+       * Revenue is summed from line items so it matches the old client math.
+       * `to` is exclusive, which is what keeps the current and previous windows
+       * from both counting the row that sits exactly on their shared boundary.
+       */
       const windowStats = async (from: Date | null, to: Date | null): Promise<WindowStats> => {
         const range = [t];
         if (from) range.push(gte(orders.createdAt, from));
@@ -92,8 +115,8 @@ export class DashboardService {
       };
 
       const [current, previous] = await Promise.all([
-        windowStats(curFrom, null),
-        windowStats(prevFrom, curFrom),
+        windowStats(cur.from, cur.to),
+        windowStats(prev.from, prev.to),
       ]);
 
       const [
@@ -111,13 +134,16 @@ export class DashboardService {
         // Daily revenue/orders for the chart.
         tx
           .select({
-            date: sql<string>`to_char(${orders.createdAt}, 'MM-DD')`,
+            date:
+              granularity === "month"
+                ? sql<string>`to_char(${orders.createdAt}, 'YYYY-MM')`
+                : sql<string>`to_char(${orders.createdAt}, 'YYYY-MM-DD')`,
             orders: sql<number>`count(distinct ${orders.id})::int`,
             revenue: sql<number>`coalesce(sum(${orderItems.qty} * ${orderItems.unitPrice}), 0)::float`,
           })
           .from(orders)
           .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
-          .where(curFrom ? and(t, gte(orders.createdAt, curFrom)) : t)
+          .where(inWindow)
           .groupBy(sql`1`)
           .orderBy(sql`1`),
 
@@ -250,7 +276,7 @@ export class DashboardService {
         })
         .from(orderItems)
         .innerJoin(orders, eq(orderItems.orderId, orders.id))
-        .where(curFrom ? and(t, gte(orders.createdAt, curFrom)) : t)
+        .where(inWindow)
         .groupBy(orderItems.productId)
         .orderBy(sql`4 desc`)
         .limit(5);
@@ -261,6 +287,9 @@ export class DashboardService {
 
       return {
         period,
+        from: cur.from?.toISOString() ?? null,
+        to: cur.to?.toISOString() ?? null,
+        granularity,
         current,
         previous,
         daily,

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, NotFoundException, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/db.tokens";
@@ -12,6 +12,7 @@ import {
   warehouses,
 } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
+import { parseDateWindow } from "../common/date-window";
 import { CurrentUser } from "../auth/decorators";
 import { actorOf, type AuthUser } from "../auth/auth.types";
 import { CurrentTenant } from "../tenant/tenant.decorator";
@@ -280,13 +281,29 @@ export class InventoryController {
     summary: "Everything the Inventory overview page renders",
     description: "One request rather than a dozen list calls — mirrors how DashboardService composes its payload.",
   })
-  async overview(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Query("period") period?: string) {
+  @ApiQuery({
+    name: "period",
+    required: false,
+    enum: ["7", "30"],
+    description: "Trailing window in days (default 7). Ignored when from/to are given.",
+  })
+  @ApiQuery({ name: "from", required: false, description: "ISO start of an explicit window; overrides `period`" })
+  @ApiQuery({ name: "to", required: false, description: "ISO end of an explicit window (inclusive)" })
+  async overview(
+    @CurrentUser() user: AuthUser,
+    @CurrentTenant() tenant: TenantDto,
+    @Query("period") period?: string,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+  ) {
+    const w = parseDateWindow(from, to);
     const days = period === "30" ? 30 : 7;
-    // ISO string, not a Date: postgres.js can serialize a Date through the
+    // ISO strings, not Dates: postgres.js can serialize a Date through the
     // typed query builder (which knows the column type) but not as a bare
     // parameter in a raw `sql` template, where it throws ERR_INVALID_ARG_TYPE.
-    // The explicit casts below tell Postgres what to read it back as.
-    const since = new Date(Date.now() - days * 86_400_000).toISOString();
+    // The explicit casts below tell Postgres what to read them back as.
+    const since = (w.from ?? new Date(Date.now() - days * 86_400_000)).toISOString();
+    const until = (w.to ?? new Date()).toISOString();
 
     return this.tdb.forTenant(tenant.id, async (tx) => {
       const [stats, trend, topMovers, lowStock, byWarehouse, orphanProducts] = await Promise.all([
@@ -295,7 +312,7 @@ export class InventoryController {
           select to_char(d.day, 'YYYY-MM-DD') as date,
                  coalesce(sum(m.qty) filter (where m.qty > 0), 0)::int as "in",
                  coalesce(-sum(m.qty) filter (where m.qty < 0), 0)::int as "out"
-            from generate_series(${since}::date, now()::date, interval '1 day') d(day)
+            from generate_series(${since}::date, ${until}::date, interval '1 day') d(day)
             left join public.stock_movements m
               on m.tenant_id = ${tenant.id} and m.at >= d.day and m.at < d.day + interval '1 day'
            group by d.day order by d.day
@@ -306,7 +323,8 @@ export class InventoryController {
                  count(*)::int as movements
             from public.stock_movements m
             join public.skus s on s.id = m.sku_id
-           where m.tenant_id = ${tenant.id} and m.at >= ${since}::timestamptz and m.qty <> 0
+           where m.tenant_id = ${tenant.id} and m.at >= ${since}::timestamptz
+             and m.at <= ${until}::timestamptz and m.qty <> 0
            group by m.sku_id, s.code, s.name
            order by units desc limit 8
         `),
@@ -347,6 +365,8 @@ export class InventoryController {
       const rows = <T>(r: unknown) => r as unknown as T[];
       return {
         period: days,
+        from: since,
+        to: until,
         stats,
         movementTrend: rows<{ date: string; in: number; out: number }>(trend),
         topMovers: rows<Record<string, unknown>>(topMovers),
