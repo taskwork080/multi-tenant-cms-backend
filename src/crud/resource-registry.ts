@@ -27,10 +27,64 @@ export interface ChildDef {
   children?: ChildDef[];
 }
 
+/**
+ * Capabilities a caller's tenant role must hold to read / write a resource.
+ *
+ * Declared here rather than as a route decorator because the generic controller
+ * serves 30+ resources from one handler — the requirement depends on
+ * `:resource` and the HTTP method, which metadata can't express. CrudService
+ * .resolve enforces it in the same place it already enforces `module`.
+ */
+export interface ResourceCapabilities {
+  /**
+   * Required by GET (list + get one). Omitted where the catalog has no
+   * matching view-only key — reading is then gated by `module` alone, which is
+   * the honest answer: inventing a `delivery.view` nobody can grant separately
+   * would only make the role editor longer, not more expressive.
+   */
+  read?: string;
+  /** Required by POST / PATCH / PUT / DELETE. */
+  write: string;
+}
+
 export interface ResourceDef {
   table: AnyTable;
   /** Module entitlement key that must be unlocked for the tenant (types.ts ModuleKey). */
   module?: string;
+  /**
+   * Tenant-role capabilities gating this resource. Omitted means "any member of
+   * the tenant" — currently nothing, but kept optional so adding a resource
+   * never silently locks it before someone picks the right keys.
+   */
+  capabilities?: ResourceCapabilities;
+  /**
+   * Operations the generic layer must NOT perform, because the row has a life
+   * outside Postgres that a plain INSERT/DELETE would desynchronise.
+   *
+   * `staff` is the case this exists for: a generic create wrote a staff_users
+   * row with no GoTrue identity — a person who could never log in — and a
+   * generic delete removed the row while leaving the identity orphaned. Both
+   * now go through /api/:tenant/staff/invite, which owns the two-system
+   * protocol. Reads and updates stay generic; renaming someone or changing
+   * their role is pure Postgres.
+   */
+  deny?: ("create" | "update" | "delete")[];
+  /**
+   * How this resource appears in the tenant's own Activity Log
+   * (`activities.kind`, plus the column to use as the human label).
+   *
+   * The sidebar has always had an Activity Log item, and `activities` was
+   * written in exactly two places — an inventory movement and a platform-admin
+   * user action. So inside a workspace, "who deleted this product / changed
+   * this price / edited this role" was unanswerable while the UI promised
+   * otherwise. Omit for resources whose churn is noise (chat messages,
+   * activities themselves).
+   */
+  activity?: {
+    kind: string;
+    /** Row property to show as the target, first match wins. */
+    label: string[];
+  };
   /** DB column names matched by ?q= search (ILIKE). */
   searchable?: string[];
   /** Default ordering DB column (descending). Falls back to created_at. */
@@ -65,13 +119,14 @@ export interface ResourceDef {
  * /api/:tenant/:resource, including nested child collections.
  */
 export const RESOURCES: Record<string, ResourceDef> = {
-  categories: { table: s.categories, module: "categories", searchable: ["name_en", "slug"] },
-  brands: { table: s.brands, module: "brands", searchable: ["name"] },
-  manufacturers: { table: s.manufacturers, module: "manufacturers", searchable: ["name"] },
-  badges: { table: s.badges, module: "badges", searchable: ["name"] },
+  categories: { table: s.categories, module: "categories", searchable: ["name_en", "slug"], capabilities: { read: "catalog.view", write: "catalog.manage" }, activity: { kind: "product", label: ["nameEn","name","slug"] } },
+  brands: { table: s.brands, module: "brands", searchable: ["name"], capabilities: { read: "catalog.view", write: "catalog.manage" }, activity: { kind: "product", label: ["name"] } },
+  manufacturers: { table: s.manufacturers, module: "manufacturers", searchable: ["name"], capabilities: { read: "catalog.view", write: "catalog.manage" }, activity: { kind: "product", label: ["name"] } },
+  badges: { table: s.badges, module: "badges", searchable: ["name"], capabilities: { read: "catalog.view", write: "catalog.manage" }, activity: { kind: "product", label: ["name"] } },
   products: {
     table: s.products,
     module: "products",
+    capabilities: { read: "catalog.view", write: "catalog.manage" }, activity: { kind: "product", label: ["nameEn","name","slug"] },
     searchable: ["name_en", "name_bn", "slug", "style_code"],
     // All six child tables carry `sort`, which hydrateMany orders by and
     // writeChildren rewrites from the array index — so array order round-trips
@@ -88,6 +143,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
   orders: {
     table: s.orders,
     module: "sales",
+    capabilities: { read: "orders.view", write: "orders.manage" }, activity: { kind: "order", label: ["code"] },
     searchable: ["code", "customer_name"],
     children: [{ field: "items", table: s.orderItems, fk: "orderId" }],
     // Placing an order holds stock; cancelling it gives the hold back.
@@ -96,6 +152,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
   "stock-batches": {
     table: s.stockBatches,
     module: "inventory",
+    capabilities: { read: "inventory.view", write: "inventory.adjust" }, activity: { kind: "inventory", label: ["productName","note"] },
     searchable: ["product_name", "note"],
     // quantity vs low_stock_threshold is a column-to-column comparison, so it
     // can't be expressed as an ordinary `?column=value` filter.
@@ -115,12 +172,14 @@ export const RESOURCES: Record<string, ResourceDef> = {
   skus: {
     table: s.skus,
     module: "inventory",
+    capabilities: { read: "inventory.view", write: "inventory.adjust" }, activity: { kind: "inventory", label: ["code","name"] },
     searchable: ["code", "name", "barcode"],
     flags: { active: sql`status = 'active'` },
   },
   "inventory-levels": {
     table: s.inventoryLevels,
     module: "inventory",
+    capabilities: { read: "inventory.view", write: "inventory.adjust" },
     searchable: ["sku_code", "sku_name", "warehouse_name"],
     // available (on_hand - reserved) is derived, never stored, so every
     // stock-state filter is a column-to-column comparison.
@@ -136,6 +195,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
   "stock-movements": {
     table: s.stockMovements,
     module: "inventory",
+    capabilities: { read: "inventory.view", write: "inventory.adjust" },
     orderBy: "at",
     searchable: ["ref_code", "reason", "note", "actor"],
     flags: {
@@ -146,12 +206,14 @@ export const RESOURCES: Record<string, ResourceDef> = {
   "inventory-reservations": {
     table: s.inventoryReservations,
     module: "inventoryOutbound",
+    capabilities: { read: "inventory.view", write: "inventory.ship" },
     searchable: ["order_code", "sku_code", "sku_name"],
     flags: { open: sql`status = 'active'` },
   },
   "stock-transfers": {
     table: s.stockTransfers,
     module: "inventoryTransfers",
+    capabilities: { read: "inventory.view", write: "inventory.transfer" }, activity: { kind: "inventory", label: ["ref"] },
     searchable: ["ref", "carrier", "tracking_ref", "from_warehouse_name", "to_warehouse_name"],
     flags: { open: sql`status in ('draft','in_transit')` },
     children: [{ field: "items", table: s.stockTransferItems, fk: "transferId" }],
@@ -159,6 +221,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
   "inbound-receipts": {
     table: s.inboundReceipts,
     module: "inventoryInbound",
+    capabilities: { read: "inventory.view", write: "inventory.receive" }, activity: { kind: "inventory", label: ["ref"] },
     searchable: ["ref", "supplier_name", "reference_no", "warehouse_name"],
     flags: { open: sql`status = 'draft'` },
     children: [{ field: "items", table: s.inboundReceiptItems, fk: "receiptId" }],
@@ -166,6 +229,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
   "cycle-counts": {
     table: s.cycleCounts,
     module: "inventoryCounts",
+    capabilities: { read: "inventory.view", write: "inventory.count" }, activity: { kind: "inventory", label: ["ref"] },
     searchable: ["ref", "counted_by", "warehouse_name"],
     flags: { open: sql`status in ('draft','counting','review')` },
     children: [{ field: "items", table: s.cycleCountItems, fk: "countId" }],
@@ -173,27 +237,47 @@ export const RESOURCES: Record<string, ResourceDef> = {
   warehouses: {
     table: s.warehouses,
     module: "warehouses",
+    capabilities: { read: "inventory.view", write: "warehouses.manage" }, activity: { kind: "inventory", label: ["name"] },
     searchable: ["name"],
     children: [{ field: "coverageAreas", table: s.warehouseCoverageAreas, fk: "warehouseId", scalar: "area" }],
   },
-  "delivery-channels": { table: s.deliveryChannels, module: "delivery", searchable: ["name"] },
-  customers: { table: s.customers, module: "customers", searchable: ["name", "phone", "email", "company"] },
-  sellers: { table: s.sellers, module: "sellers", searchable: ["name", "contact"] },
-  "promo-codes": { table: s.promoCodes, module: "discounts", searchable: ["code"] },
-  reviews: { table: s.reviews, module: "reviews", searchable: ["product_name", "author"] },
-  returns: { table: s.returnRequests, module: "returns", searchable: ["code", "order_code", "customer_name"] },
-  "tax-rates": { table: s.taxRates, module: "tax", searchable: ["name", "region"] },
+  "delivery-channels": { table: s.deliveryChannels, module: "delivery", searchable: ["name"], capabilities: { write: "delivery.manage" }, activity: { kind: "shipment", label: ["name"] } },
+  customers: { table: s.customers, module: "customers", searchable: ["name", "phone", "email", "company"], capabilities: { read: "customers.view", write: "customers.manage" }, activity: { kind: "customer", label: ["name","phone","email"] } },
+  sellers: { table: s.sellers, module: "sellers", searchable: ["name", "contact"], capabilities: { write: "sellers.manage" }, activity: { kind: "customer", label: ["name"] } },
+  "promo-codes": { table: s.promoCodes, module: "discounts", searchable: ["code"], capabilities: { write: "marketing.manage" }, activity: { kind: "discount", label: ["code"] } },
+  reviews: { table: s.reviews, module: "reviews", searchable: ["product_name", "author"], capabilities: { write: "reviews.moderate" }, activity: { kind: "product", label: ["productName","author"] } },
+  returns: { table: s.returnRequests, module: "returns", searchable: ["code", "order_code", "customer_name"], capabilities: { write: "returns.manage" }, activity: { kind: "order", label: ["code","orderCode"] } },
+  "tax-rates": { table: s.taxRates, module: "tax", searchable: ["name", "region"], capabilities: { write: "settings.manage" }, activity: { kind: "setting", label: ["name","region"] } },
   roles: {
     table: s.roles,
     module: "roles",
+    capabilities: { read: "staff.manage", write: "staff.manage" }, activity: { kind: "setting", label: ["name"] },
     searchable: ["name"],
     children: [{ field: "permissions", table: s.rolePermissions, fk: "roleId", scalar: "permission" }],
   },
-  staff: { table: s.staffUsers, module: "staff", searchable: ["name", "email"] },
-  activities: { table: s.activities, module: "activity", searchable: ["actor", "action", "target"] },
+  staff: {
+    table: s.staffUsers,
+    module: "staff",
+    searchable: ["name", "email"],
+    capabilities: { read: "staff.manage", write: "staff.manage" }, activity: { kind: "auth", label: ["email","name"] },
+    // Creating/removing a staff member also creates/removes a GoTrue identity.
+    // See ResourceDef.deny — /api/:tenant/staff/invite owns that protocol.
+    deny: ["create", "delete"],
+  },
+  activities: {
+    table: s.activities,
+    module: "activity",
+    searchable: ["actor", "action", "target"],
+    // The workspace audit feed: written by the system (CrudService.writeActivity,
+    // InventoryService, the platform user actions) and read by humans. A feed a
+    // user can POST to is a feed that can be forged, which makes the whole thing
+    // worthless as evidence — so the generic layer serves reads only.
+    deny: ["create", "update", "delete"],
+  },
   shipments: {
     table: s.shipments,
     module: "shipments",
+    capabilities: { write: "shipments.manage" }, activity: { kind: "shipment", label: ["tracking","orderCode"] },
     searchable: ["tracking", "order_code", "customer_name"],
     children: [
       { field: "items", table: s.shipmentItems, fk: "shipmentId" },
@@ -228,6 +312,7 @@ export const RESOURCES: Record<string, ResourceDef> = {
   "packing-lists": {
     table: s.packingLists,
     module: "packing",
+    capabilities: { write: "packing.manage" }, activity: { kind: "shipment", label: ["ref","orderCode"] },
     searchable: ["ref", "order_code", "customer_name"],
     children: [
       {
@@ -246,6 +331,6 @@ export const RESOURCES: Record<string, ResourceDef> = {
       { field: "shipEvents", table: s.packShipEvents, fk: "packingListId", orderBy: "at" },
     ],
   },
-  "cms-blocks": { table: s.cmsBlocks, module: "cms", searchable: ["title", "slug"] },
-  "language-entries": { table: s.languageEntries, module: "language", searchable: ["key", "en", "bn"] },
+  "cms-blocks": { table: s.cmsBlocks, module: "cms", searchable: ["title", "slug"], capabilities: { write: "storefront.manage" }, activity: { kind: "setting", label: ["title","slug"] } },
+  "language-entries": { table: s.languageEntries, module: "language", searchable: ["key", "en", "bn"], capabilities: { write: "settings.manage" }, activity: { kind: "setting", label: ["key"] } },
 };

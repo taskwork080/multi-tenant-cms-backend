@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { CrudService } from "../crud/crud.service";
+import type { UserAccess } from "../auth/access.service";
 import type { TenantDto } from "../tenant/tenant.service";
 
 export type SearchHitType = "Product" | "Order" | "Customer" | "Category" | "Brand" | "Seller" | "Promo";
@@ -25,7 +26,7 @@ const str = (v: unknown) => (v == null ? "" : String(v));
 interface Source {
   resource: string;
   type: SearchHitType;
-  /** Module entitlement is enforced by CrudService.resolve; failures are skipped. */
+  /** Module entitlement and read capability are enforced by CrudService.resolve; failures are skipped. */
   toHit: (r: Row) => SearchHit;
 }
 
@@ -121,20 +122,22 @@ export class SearchService {
    * Replaces a client-side scan that required the browser to hold seven whole
    * collections in memory.
    */
-  async search(tenant: TenantDto, q: string, perType = 4): Promise<SearchHit[]> {
+  async search(tenant: TenantDto, q: string, perType = 4, access?: UserAccess): Promise<SearchHit[]> {
     const term = q.trim();
     if (!term) return [];
 
     const results = await Promise.allSettled(
       SOURCES.map((src) =>
-        this.crud.list(tenant, src.resource, { q: term, pageSize: String(perType) }),
+        this.crud.list(tenant, src.resource, { q: term, pageSize: String(perType) }, access),
       ),
     );
 
     const hits: SearchHit[] = [];
     results.forEach((res, i) => {
-      // A rejected source means the tenant lacks that module — skip it rather
-      // than failing the whole search.
+      // A rejected source means the tenant lacks that module, or this user
+      // lacks the read capability for it — skip it rather than failing the
+      // whole search. Narrowing silently is the point: the palette must never
+      // surface a record its opener could not open.
       if (res.status !== "fulfilled") return;
       (res.value.data as Row[]).forEach((row) => hits.push(SOURCES[i].toHit(row)));
     });

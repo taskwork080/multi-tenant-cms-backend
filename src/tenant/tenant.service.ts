@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { asc, eq } from "drizzle-orm";
+import type { Db } from "../db/db.tokens";
 import { TenantDb } from "../db/tenant-db.service";
 import { tenantEntitlements, tenants } from "../db/schema";
 
@@ -119,11 +120,23 @@ export class TenantService {
     return rows.map((r) => r.module);
   }
 
+  /**
+   * Wholesale replace, in ONE transaction.
+   *
+   * Delete-then-insert across two round trips left a window where a failed
+   * insert (or a dropped connection between them) committed the delete on its
+   * own — leaving a workspace with zero modules, which is a locked-out
+   * workspace, not a degraded one. asPlatform is the right handle: this is
+   * called from the platform surface and tenant_entitlements is not covered by
+   * a tenant-scoped policy.
+   */
   private async replaceEntitlements(tenantId: string, modules: string[]) {
-    await this.tdb.raw.delete(tenantEntitlements).where(eq(tenantEntitlements.tenantId, tenantId));
-    if (modules.length) {
-      await this.tdb.raw.insert(tenantEntitlements).values(modules.map((module) => ({ tenantId, module })));
-    }
+    await this.tdb.asPlatform(async (tx) => {
+      await tx.delete(tenantEntitlements).where(eq(tenantEntitlements.tenantId, tenantId));
+      if (modules.length) {
+        await tx.insert(tenantEntitlements).values(modules.map((module) => ({ tenantId, module })));
+      }
+    });
   }
 
   async bySlug(slug: string): Promise<TenantDto> {
@@ -166,12 +179,33 @@ export class TenantService {
     return this.toDto(row, await this.loadEntitlements(row.id));
   }
 
-  async create(input: TenantInput & { slug: string; name: string; type: string }): Promise<TenantDto> {
-    const [row] = await this.tdb.raw
-      .insert(tenants)
-      .values(this.toColumns(input) as typeof tenants.$inferInsert)
-      .returning();
-    if (input.entitlements?.length) await this.replaceEntitlements(row.id, input.entitlements);
-    return this.toDto(row, input.entitlements ?? []);
+  /**
+   * Create a workspace, and everything that must exist alongside it, atomically.
+   *
+   * `provision` runs inside the same transaction as the tenants INSERT — see
+   * TenantProvisioningService. This used to be three sequential round trips
+   * (tenant, then entitlements, and roles never at all), so a failure between
+   * them left a workspace that looked created and could not be used. Either the
+   * whole workspace exists or none of it does.
+   */
+  async create(
+    input: TenantInput & { slug: string; name: string; type: string },
+    provision?: (tx: Db, tenantId: string, entitlements: string[]) => Promise<unknown>,
+  ): Promise<TenantDto> {
+    const entitlements = input.entitlements ?? [];
+    return this.tdb.asPlatform(async (tx) => {
+      const [row] = await tx
+        .insert(tenants)
+        .values(this.toColumns(input) as typeof tenants.$inferInsert)
+        .returning();
+
+      if (provision) {
+        await provision(tx, row.id, entitlements);
+      } else if (entitlements.length) {
+        await tx.insert(tenantEntitlements).values(entitlements.map((module) => ({ tenantId: row.id, module })));
+      }
+
+      return this.toDto(row, entitlements);
+    });
   }
 }

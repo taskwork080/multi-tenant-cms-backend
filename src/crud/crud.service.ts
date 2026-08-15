@@ -2,10 +2,16 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { and, asc, desc, eq, getTableColumns, gte, ilike, inArray, isNotNull, isNull, lte, or, sql, SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { Db } from "../db/db.tokens";
+import type { UserAccess } from "../auth/access.service";
+import { assertCapabilities } from "../auth/capability.guard";
+import { activities } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import { FulfilmentService } from "../inventory/fulfilment.service";
 import type { TenantDto } from "../tenant/tenant.service";
 import { AnyTable, ChildDef, RESOURCES, ResourceDef } from "./resource-registry";
+
+/** Which half of a ResourceDef's capabilities a call needs. */
+export type AccessMode = "read" | "write";
 
 export interface ListQuery {
   q?: string;
@@ -95,17 +101,47 @@ export class CrudService {
     private readonly fulfilment: FulfilmentService,
   ) {}
 
-  resolve(resource: string, tenant: TenantDto): ResourceDef {
+  /**
+   * The two gates every generic request passes, in the order they answer
+   * different questions:
+   *
+   *   module     — did this workspace buy the feature?  403 for everyone, owner
+   *                included. Decided by the platform admin.
+   *   capability — may *this user* read/write it?       403 for one person.
+   *                Decided by the tenant's own role editor.
+   *
+   * `access` is optional because SearchService fans out across every resource
+   * and treats a 403 as "skip", and because a caller that has no resolved
+   * access (no tenant context) has nothing to check. Passing BYPASS_ACCESS
+   * explicitly is how an internal caller opts out on purpose.
+   */
+  resolve(resource: string, tenant: TenantDto, access?: UserAccess, mode: AccessMode = "read"): ResourceDef {
     const def = RESOURCES[resource];
     if (!def) throw new NotFoundException(`Unknown resource "${resource}"`);
     if (def.module && !tenant.entitlements.includes(def.module)) {
       throw new ForbiddenException(`Module "${def.module}" is not enabled for this tenant`);
     }
+    if (access && def.capabilities) {
+      const required = mode === "write" ? def.capabilities.write : def.capabilities.read;
+      if (required) assertCapabilities(access, [required]);
+    }
     return def;
   }
 
-  async list(tenant: TenantDto, resource: string, query: ListQuery) {
-    const def = this.resolve(resource, tenant);
+  /**
+   * Operations this resource refuses to do generically (ResourceDef.deny).
+   * Separate from resolve() because it keys off the concrete verb, not the
+   * read/write split the capability check uses.
+   */
+  private assertAllowed(def: ResourceDef, resource: string, op: "create" | "update" | "delete") {
+    if (!def.deny?.includes(op)) return;
+    throw new BadRequestException(
+      `"${resource}" records cannot be ${op}d here — use the dedicated endpoint for this resource.`,
+    );
+  }
+
+  async list(tenant: TenantDto, resource: string, query: ListQuery, access?: UserAccess) {
+    const def = this.resolve(resource, tenant, access, "read");
     const table = def.table;
     const cols = getTableColumns(table);
 
@@ -166,8 +202,8 @@ export class CrudService {
     });
   }
 
-  async get(tenant: TenantDto, resource: string, id: string) {
-    const def = this.resolve(resource, tenant);
+  async get(tenant: TenantDto, resource: string, id: string, access?: UserAccess) {
+    const def = this.resolve(resource, tenant, access, "read");
     return this.tdb.forTenant(tenant.id, async (tx) => {
       const [row] = await tx
         .select()
@@ -180,8 +216,9 @@ export class CrudService {
     });
   }
 
-  async create(tenant: TenantDto, resource: string, body: Row) {
-    const def = this.resolve(resource, tenant);
+  async create(tenant: TenantDto, resource: string, body: Row, access?: UserAccess) {
+    const def = this.resolve(resource, tenant, access, "write");
+    this.assertAllowed(def, resource, "create");
     const { values, childInputs } = this.split(def, body);
     values.tenantId = tenant.id;
     return this.tdb.forTenant(tenant.id, async (tx) => {
@@ -196,13 +233,15 @@ export class CrudService {
         await this.fulfilment.reserveOrder(tx, tenant.id, (row as Row).id as string);
       }
 
+      await this.writeActivity(tx, tenant.id, def, "created", row as Row, access);
       const [hydrated] = await this.hydrateMany(tx, def.children, [row as Row]);
       return hydrated;
     });
   }
 
-  async update(tenant: TenantDto, resource: string, id: string, body: Row) {
-    const def = this.resolve(resource, tenant);
+  async update(tenant: TenantDto, resource: string, id: string, body: Row, access?: UserAccess) {
+    const def = this.resolve(resource, tenant, access, "write");
+    this.assertAllowed(def, resource, "update");
     const { values, childInputs } = this.split(def, body);
     if (!Object.keys(values).length && !Object.keys(childInputs).length) {
       throw new BadRequestException("No updatable fields in body");
@@ -242,6 +281,7 @@ export class CrudService {
         }
       }
 
+      await this.writeActivity(tx, tenant.id, def, "updated", row as Row, access);
       const [hydrated] = await this.hydrateMany(tx, def.children, [row as Row]);
       return hydrated;
     });
@@ -253,16 +293,57 @@ export class CrudService {
     return status === "cancelled" || status === "canceled" || status === "failed";
   }
 
-  async remove(tenant: TenantDto, resource: string, id: string) {
-    const def = this.resolve(resource, tenant);
+  async remove(tenant: TenantDto, resource: string, id: string, access?: UserAccess) {
+    const def = this.resolve(resource, tenant, access, "write");
+    this.assertAllowed(def, resource, "delete");
     return this.tdb.forTenant(tenant.id, async (tx) => {
       const [row] = await tx
         .delete(def.table)
         .where(and(eq(def.table.id, id), eq(def.table.tenantId, tenant.id)))
         .returning(); // children removed by ON DELETE CASCADE
       if (!row) throw new NotFoundException(`${resource}/${id} not found`);
+      await this.writeActivity(tx, tenant.id, def, "deleted", row as Row, access);
       return { deleted: true, id };
     });
+  }
+
+  /**
+   * Append a row to the tenant's own Activity Log, in the same transaction as
+   * the write it describes.
+   *
+   * In-transaction for the same reason AuditService is: a feed that can
+   * disagree with the data it narrates is worse than no feed. Resources with no
+   * `activity` block write nothing — chat churn and the activities table itself
+   * would only be noise.
+   *
+   * Failures are swallowed deliberately. This is a narration of a write that
+   * has already been decided; losing a log line must not roll back a product
+   * edit the user was told succeeded.
+   */
+  private async writeActivity(
+    tx: Db,
+    tenantId: string,
+    def: ResourceDef,
+    verb: "created" | "updated" | "deleted",
+    row: Row,
+    access?: UserAccess,
+  ) {
+    if (!def.activity) return;
+    try {
+      const label =
+        def.activity.label.map((k) => row[k]).find((v) => typeof v === "string" && v.length > 0) ??
+        (row.id as string | undefined) ??
+        "";
+      await tx.insert(activities).values({
+        tenantId,
+        actor: access?.actor ?? "system",
+        action: verb,
+        target: String(label),
+        kind: def.activity.kind,
+      });
+    } catch {
+      // See above: never fail the write over its own log line.
+    }
   }
 
   // --- child hydration ------------------------------------------------------

@@ -9,6 +9,12 @@ import {
   products,
   returnRequests,
   shipments,
+  stockMovements,
+  inboundReceipts,
+  stockTransfers,
+  cycleCounts,
+  cycleCountItems,
+  packingLists,
 } from "../db/schema";
 import { previousWindow, type DateWindow } from "../common/date-window";
 import { TenantDb } from "../db/tenant-db.service";
@@ -49,7 +55,29 @@ export interface WindowStats {
 export class DashboardService {
   constructor(private readonly tdb: TenantDb) {}
 
+  /**
+   * Dispatches on the workspace's vertical.
+   *
+   * The dashboard used to be e-commerce only, for every tenant. A warehouse
+   * workspace — which has no `sales` module, so no orders and no revenue —
+   * opened on a home screen of four zeroed revenue cards and a flat order
+   * chart. Not wrong exactly, just describing a business it isn't in.
+   *
+   * The two payloads are a discriminated union on `variant` rather than one
+   * superset shape with nullable fields: the frontend renders entirely
+   * different cards, and a nullable `revenue` invites it to render "—" instead
+   * of the metric a warehouse actually cares about.
+   */
   async stats(tenant: TenantDto, period: Period = "30", window: DateWindow = { from: null, to: null }) {
+    if (tenant.type === "warehouse") return this.warehouseStats(tenant, period, window);
+    return this.commerceStats(tenant, period, window);
+  }
+
+  private async commerceStats(
+    tenant: TenantDto,
+    period: Period = "30",
+    window: DateWindow = { from: null, to: null },
+  ) {
     const days = period === "all" ? null : Number(period);
     const now = new Date();
 
@@ -314,6 +342,223 @@ export class DashboardService {
         activeShipments: activeShipments.n,
         lowStockBatches,
         lowStockCount: lowStockCountRows[0]?.n ?? 0,
+        variant: "commerce" as const,
+      };
+    });
+  }
+
+  /**
+   * The warehouse home screen: goods in, goods out, and whether the count is
+   * trustworthy.
+   *
+   * Every figure comes from `stock_movements` or the lifecycle tables, not from
+   * orders — a 3PL-style workspace moves other people's stock and may never
+   * have an order row. The movement ledger is append-only and every change to
+   * `inventory_levels` writes exactly one row, so summing it is exact rather
+   * than an estimate reconstructed from current state.
+   */
+  private async warehouseStats(
+    tenant: TenantDto,
+    period: Period = "30",
+    window: DateWindow = { from: null, to: null },
+  ) {
+    const days = period === "all" ? null : Number(period);
+    const now = new Date();
+    const cur: DateWindow =
+      window.from || window.to
+        ? window
+        : { from: days ? new Date(now.getTime() - days * DAY_MS) : null, to: null };
+    const prev = previousWindow(cur, now);
+
+    const spanDays = cur.from ? ((cur.to ?? now).getTime() - cur.from.getTime()) / DAY_MS : Infinity;
+    const granularity: "day" | "month" = spanDays > 92 ? "month" : "day";
+
+    return this.tdb.forTenant(tenant.id, async (tx) => {
+      /** Movement rows for one window, scoped to this tenant. */
+      const movementsWhere = (from: Date | null, to: Date | null) =>
+        and(
+          eq(stockMovements.tenantId, tenant.id),
+          ...(from ? [gte(stockMovements.at, from)] : []),
+          ...(to ? [lt(stockMovements.at, to)] : []),
+        );
+
+      /**
+       * Throughput for a window. `qty` is signed — positive in, negative out —
+       * so receipts and dispatches separate cleanly without a kind whitelist
+       * that would drift as movement kinds are added.
+       */
+      const throughput = async (from: Date | null, to: Date | null) => {
+        const [row] = await tx
+          .select({
+            unitsIn: sql<number>`coalesce(sum(case when ${stockMovements.qty} > 0 then ${stockMovements.qty} else 0 end), 0)::int`,
+            unitsOut: sql<number>`coalesce(sum(case when ${stockMovements.qty} < 0 then -${stockMovements.qty} else 0 end), 0)::int`,
+            movements: sql<number>`count(*)::int`,
+            activeSkus: sql<number>`count(distinct ${stockMovements.skuId})::int`,
+          })
+          .from(stockMovements)
+          .where(movementsWhere(from, to));
+        return {
+          unitsIn: row?.unitsIn ?? 0,
+          unitsOut: row?.unitsOut ?? 0,
+          movements: row?.movements ?? 0,
+          activeSkus: row?.activeSkus ?? 0,
+        };
+      };
+
+      const bucket =
+        granularity === "month"
+          ? sql<string>`to_char(${stockMovements.at}, 'YYYY-MM')`
+          : sql<string>`to_char(${stockMovements.at}, 'YYYY-MM-DD')`;
+
+      const [
+        current,
+        previous,
+        receipts,
+        transfers,
+        counts,
+        stockHealth,
+        totals,
+        packing,
+        series,
+        warehouseSplit,
+      ] = await Promise.all([
+        throughput(cur.from, cur.to),
+        throughput(prev.from, prev.to),
+
+        // Inbound: how much arrived, and how much is still sitting in draft.
+        tx
+          .select({ status: inboundReceipts.status, n: sql<number>`count(*)::int` })
+          .from(inboundReceipts)
+          .where(
+            and(
+              eq(inboundReceipts.tenantId, tenant.id),
+              ...(cur.from ? [gte(inboundReceipts.createdAt, cur.from)] : []),
+              ...(cur.to ? [lt(inboundReceipts.createdAt, cur.to)] : []),
+            ),
+          )
+          .groupBy(inboundReceipts.status),
+
+        // Transfers in flight are the classic "where is my stock" question.
+        tx
+          .select({ status: stockTransfers.status, n: sql<number>`count(*)::int` })
+          .from(stockTransfers)
+          .where(eq(stockTransfers.tenantId, tenant.id))
+          .groupBy(stockTransfers.status),
+
+        // Count accuracy: total absolute variance posted in the window. A
+        // warehouse's single most important quality metric.
+        tx
+          .select({
+            posted: sql<number>`count(distinct ${cycleCounts.id})::int`,
+            variance: sql<number>`coalesce(sum(abs(${cycleCountItems.variance})), 0)::int`,
+            linesCounted: sql<number>`count(${cycleCountItems.id})::int`,
+          })
+          .from(cycleCounts)
+          .leftJoin(cycleCountItems, eq(cycleCountItems.countId, cycleCounts.id))
+          .where(
+            and(
+              eq(cycleCounts.tenantId, tenant.id),
+              eq(cycleCounts.status, "posted"),
+              ...(cur.from ? [gte(cycleCounts.postedAt, cur.from)] : []),
+              ...(cur.to ? [lt(cycleCounts.postedAt, cur.to)] : []),
+            ),
+          ),
+
+        tx
+          .select({
+            inStock: sql<number>`count(*) filter (where (on_hand - reserved) > coalesce(low_stock_threshold, ${LOW_STOCK}))::int`,
+            low: sql<number>`count(*) filter (where ${LOW_STOCK_PREDICATE} and on_hand > 0)::int`,
+            out: sql<number>`count(*) filter (where on_hand <= 0)::int`,
+          })
+          .from(inventoryLevels)
+          .where(eq(inventoryLevels.tenantId, tenant.id)),
+
+        tx
+          .select({
+            onHand: sql<number>`coalesce(sum(${inventoryLevels.onHand}), 0)::int`,
+            reserved: sql<number>`coalesce(sum(${inventoryLevels.reserved}), 0)::int`,
+            incoming: sql<number>`coalesce(sum(${inventoryLevels.incoming}), 0)::int`,
+          })
+          .from(inventoryLevels)
+          .where(eq(inventoryLevels.tenantId, tenant.id)),
+
+        tx
+          .select({ status: packingLists.status, n: sql<number>`count(*)::int` })
+          .from(packingLists)
+          .where(eq(packingLists.tenantId, tenant.id))
+          .groupBy(packingLists.status),
+
+        tx
+          .select({
+            bucket,
+            unitsIn: sql<number>`coalesce(sum(case when ${stockMovements.qty} > 0 then ${stockMovements.qty} else 0 end), 0)::int`,
+            unitsOut: sql<number>`coalesce(sum(case when ${stockMovements.qty} < 0 then -${stockMovements.qty} else 0 end), 0)::int`,
+          })
+          .from(stockMovements)
+          .where(movementsWhere(cur.from, cur.to))
+          .groupBy(bucket)
+          .orderBy(bucket),
+
+        // Where the stock actually sits — the multi-warehouse view an
+        // e-commerce dashboard has no reason to show.
+        tx
+          .select({
+            warehouseId: inventoryLevels.warehouseId,
+            warehouse: inventoryLevels.warehouseName,
+            onHand: sql<number>`coalesce(sum(${inventoryLevels.onHand}), 0)::int`,
+            skus: sql<number>`count(*)::int`,
+          })
+          .from(inventoryLevels)
+          .where(eq(inventoryLevels.tenantId, tenant.id))
+          .groupBy(inventoryLevels.warehouseId, inventoryLevels.warehouseName)
+          .orderBy(sql`2`),
+      ]);
+
+      const byStatus = (rows: { status: string; n: number }[]) =>
+        Object.fromEntries(rows.map((r) => [r.status, r.n])) as Record<string, number>;
+
+      const countRow = counts[0] ?? { posted: 0, variance: 0, linesCounted: 0 };
+
+      return {
+        variant: "warehouse" as const,
+        period,
+        from: cur.from,
+        to: cur.to,
+        granularity,
+        current,
+        previous,
+        inbound: {
+          byStatus: byStatus(receipts),
+          received: byStatus(receipts).received ?? 0,
+          draft: byStatus(receipts).draft ?? 0,
+        },
+        transfers: {
+          byStatus: byStatus(transfers),
+          inTransit: byStatus(transfers).in_transit ?? 0,
+          open: (byStatus(transfers).draft ?? 0) + (byStatus(transfers).in_transit ?? 0),
+        },
+        counts: {
+          posted: countRow.posted,
+          linesCounted: countRow.linesCounted,
+          absVariance: countRow.variance,
+          // Share of counted lines that matched the book figure. The number a
+          // warehouse manager is actually judged on.
+          accuracy: countRow.linesCounted
+            ? Math.max(0, Math.round((1 - countRow.variance / Math.max(1, countRow.linesCounted)) * 100))
+            : null,
+        },
+        packing: {
+          byStatus: byStatus(packing),
+          open: (byStatus(packing).draft ?? 0) + (byStatus(packing).packed ?? 0),
+          shipped: byStatus(packing).shipped ?? 0,
+        },
+        stock: {
+          ...(totals[0] ?? { onHand: 0, reserved: 0, incoming: 0 }),
+          available: (totals[0]?.onHand ?? 0) - (totals[0]?.reserved ?? 0),
+          health: stockHealth[0] ?? { inStock: 0, low: 0, out: 0 },
+          byWarehouse: warehouseSplit,
+        },
+        daily: series,
       };
     });
   }

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotFoundException, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, NotFoundException, Param, Patch, Post, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -13,10 +13,11 @@ import {
 } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import { parseDateWindow } from "../common/date-window";
+import { RequireCapability } from "../auth/decorators";
+import { RequireModule } from "../tenant/module.decorator";
 import { CurrentUser } from "../auth/decorators";
 import { actorOf, type AuthUser } from "../auth/auth.types";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
 import { DEFAULT_LOW_STOCK_THRESHOLD, InventoryService } from "./inventory.service";
 
@@ -110,8 +111,11 @@ const adjustSchema = z.union([
 @ApiTags("inventory")
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
+// Capabilities are per-method here, not class-level: this controller mixes the
+// read surface a picker needs with the adjust/receive writes a stock controller
+// owns, and collapsing them would hand every reader a write key.
+@RequireModule("inventory")
 @Controller("api/:tenant/inventory")
-@UseGuards(TenantGuard)
 export class InventoryController {
   constructor(
     private readonly tdb: TenantDb,
@@ -121,6 +125,7 @@ export class InventoryController {
   // --- SKUs -------------------------------------------------------------------
 
   @Post("skus/generate")
+  @RequireCapability("inventory.adjust")
   @ApiOperation({
     summary: "Reconcile a product's SKUs with its variants",
     description:
@@ -150,6 +155,7 @@ export class InventoryController {
   }
 
   @Patch("skus/:id")
+  @RequireCapability("inventory.adjust")
   @ApiOperation({
     summary: "Edit a SKU's code, barcode or threshold",
     description: "Validates uniqueness up front so a clash reads as a 409 rather than a raw constraint error.",
@@ -189,6 +195,7 @@ export class InventoryController {
   // --- Reads ------------------------------------------------------------------
 
   @Get("availability")
+  @RequireCapability("inventory.view")
   @ApiOperation({
     summary: "On-hand / reserved / available for a SKU or product",
     description: "What order entry should cap quantities against — never products.stock, which is only a mirror.",
@@ -221,6 +228,7 @@ export class InventoryController {
   }
 
   @Get("stats")
+  @RequireCapability("inventory.view")
   @ApiOperation({
     summary: "Inventory KPI tiles",
     description:
@@ -277,6 +285,7 @@ export class InventoryController {
   }
 
   @Get("overview")
+  @RequireCapability("inventory.view")
   @ApiOperation({
     summary: "Everything the Inventory overview page renders",
     description: "One request rather than a dozen list calls — mirrors how DashboardService composes its payload.",
@@ -378,6 +387,7 @@ export class InventoryController {
   }
 
   @Get("movements")
+  @RequireCapability("inventory.view")
   @ApiOperation({ summary: "Recent movements for one SKU (drawer timeline)" })
   async movements(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Query("skuId") skuId: string, @Query("limit") limit?: string) {
     const take = Math.min(Number(limit) || 20, 100);
@@ -394,6 +404,7 @@ export class InventoryController {
   // --- Writes -----------------------------------------------------------------
 
   @Post("receive")
+  @RequireCapability("inventory.receive")
   @ApiOperation({
     summary: "Receive stock into a warehouse",
     description:
@@ -447,6 +458,7 @@ export class InventoryController {
   }
 
   @Post("adjust")
+  @RequireCapability("inventory.adjust")
   @ApiOperation({
     summary: "Apply stock deltas",
     description:

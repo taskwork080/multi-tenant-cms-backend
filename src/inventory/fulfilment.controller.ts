@@ -1,13 +1,14 @@
-import { Body, Controller, NotFoundException, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, NotFoundException, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { orders } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
 import { FulfilmentService } from "./fulfilment.service";
+import { RequireModule } from "../tenant/module.decorator";
+import { RequireCapability } from "../auth/decorators";
 
 const reserveSchema = z.object({
   orderId: z.string().uuid(),
@@ -48,8 +49,9 @@ const deductSchema = z.object({
 @ApiTags("inventory")
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
+@RequireModule("inventory")
+@RequireCapability("inventory.ship")
 @Controller("api/:tenant/inventory")
-@UseGuards(TenantGuard)
 export class FulfilmentController {
   constructor(
     private readonly tdb: TenantDb,

@@ -10,6 +10,7 @@ import { PlatformRolesController, PlatformRolesService } from "./platform-roles.
 import { PlatformTenantsController, PlatformTenantsService } from "./platform-tenants.controller";
 import { PlatformUsersController } from "./platform-users.controller";
 import { PlatformUsersService } from "./platform-users.service";
+import { TenantProvisioningService } from "./tenant-provisioning.service";
 
 /**
  * Super-admin surface: cross-tenant user, workspace and role administration
@@ -49,6 +50,7 @@ import { PlatformUsersService } from "./platform-users.service";
     PlatformOverviewService,
     PlatformAuditService,
     AuthEventsService,
+    TenantProvisioningService,
   ],
   exports: [PlatformUsersService, AuditService],
 })

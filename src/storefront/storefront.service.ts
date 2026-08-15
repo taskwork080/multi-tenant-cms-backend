@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { and, asc, count, desc, eq, ilike, or } from "drizzle-orm";
 import { TenantDb } from "../db/tenant-db.service";
@@ -15,6 +15,7 @@ import {
   type StorefrontTheme,
 } from "../db/schema";
 import { TenantService, type TenantDto } from "../tenant/tenant.service";
+import { assertEntitled as assertEntitledTo } from "../tenant/entitlement.guard";
 import {
   configUpdateSchema,
   customDomainSchema,
@@ -25,8 +26,19 @@ import {
   type PageUpdateInput,
 } from "./storefront.schemas";
 
-/** Entitlement key gating the whole storefront feature (frontend ModuleKey). */
-const STOREFRONT_MODULE = "cms";
+/**
+ * Entitlement key gating the public storefront.
+ *
+ * Was "cms", which made one key mean two different things: whether the tenant
+ * can edit content inside the admin, AND whether a public website exists at
+ * all. schema.ts already flagged the conflation. A workspace that wanted
+ * internal CMS blocks but no public site could not have one, and a warehouse
+ * tenant given "cms" for internal content silently acquired a storefront.
+ *
+ * drizzle/0012_storefront_module.sql backfills this key for every tenant that
+ * already held "cms", so the split changes nothing for existing workspaces.
+ */
+const STOREFRONT_MODULE = "storefront";
 
 type ConfigRow = typeof storefrontConfigs.$inferSelect;
 type PageRow = typeof storefrontPages.$inferSelect;
@@ -90,14 +102,13 @@ export class StorefrontService {
   // -------------------------------------------------------------------------
 
   /**
-   * TenantGuard proves the caller may act for this tenant; it does not check
-   * entitlements — that lives in CrudService.resolve for registry resources.
-   * Bespoke controllers have to ask, so this mirrors the same error.
+   * Kept even though StorefrontController now carries
+   * `@RequireModule("cms")`, because these methods are also reachable from
+   * assertLive() on the *public* path, which has no guard by design. The guard
+   * covers the admin surface; this covers the service. Same error either way.
    */
   private assertEntitled(tenant: TenantDto) {
-    if (!tenant.entitlements.includes(STOREFRONT_MODULE)) {
-      throw new ForbiddenException(`Module "${STOREFRONT_MODULE}" is not enabled for this tenant`);
-    }
+    assertEntitledTo(tenant, [STOREFRONT_MODULE]);
   }
 
   // -------------------------------------------------------------------------

@@ -7,9 +7,16 @@ import { TenantDb } from "../db/tenant-db.service";
 import { platformAuditLog, roles, staffUsers, tenantEntitlements, tenants } from "../db/schema";
 import { TenantService } from "../tenant/tenant.service";
 import { Audit, AuditService, type AuditCtx } from "./audit.service";
-import { adminTenantCreateSchema, adminTenantPatchSchema, adminTenantStatusSchema, tenantListSchema } from "./dto";
-import { MODULE_KEYS, MODULE_PRESETS, presetFor } from "./module-presets";
+import {
+  adminTenantCreateSchema,
+  adminTenantPatchSchema,
+  adminTenantStatusSchema,
+  assertModulesWithinType,
+  tenantListSchema,
+} from "./dto";
+import { MODULE_KEYS, MODULE_PRESETS, TYPE_ALLOWED_MODULES, TYPE_CONFIG_FIELDS, presetFor } from "./module-presets";
 import { PlatformUsersService } from "./platform-users.service";
+import { TenantProvisioningService } from "./tenant-provisioning.service";
 
 @Injectable()
 export class PlatformTenantsService {
@@ -18,6 +25,7 @@ export class PlatformTenantsService {
     private readonly tenantSvc: TenantService,
     private readonly audit: AuditService,
     private readonly users: PlatformUsersService,
+    private readonly provisioning: TenantProvisioningService,
   ) {}
 
   async list(query: unknown) {
@@ -100,14 +108,23 @@ export class PlatformTenantsService {
   }
 
   async create(body: unknown, ctx: AuditCtx) {
-    const input = adminTenantCreateSchema.parse(body);
+    const { allowOutsideType, ...input } = adminTenantCreateSchema.parse(body);
     // An omitted entitlements array means "give me the sensible default for
     // this kind of business" — otherwise the workspace opens with an empty
     // sidebar. An explicit [] is still honoured as a deliberate empty set.
     const presetApplied = input.entitlements === undefined;
-    const dto = await this.tenantSvc.create(
-      presetApplied ? { ...input, entitlements: presetFor(input.type) } : input,
-    );
+    const entitlements = presetApplied ? presetFor(input.type) : input.entitlements!;
+    // A preset is always inside its own ceiling, so this only ever fires on an
+    // explicit list — which is exactly the case worth catching.
+    assertModulesWithinType(input.type, entitlements, allowOutsideType);
+
+    // Entitlements, the vertical's default roles and (for commerce) the
+    // storefront row are all created in the tenants INSERT's own transaction —
+    // a workspace with modules but no roles is unusable, and worse, looks fine.
+    let provisioned: Awaited<ReturnType<TenantProvisioningService["provision"]>> | undefined;
+    const dto = await this.tenantSvc.create({ ...input, entitlements }, async (tx, tenantId, mods) => {
+      provisioned = await this.provisioning.provision(tx, tenantId, input.type, mods);
+    });
     await this.tdb.asPlatform((tx) =>
       this.audit.record(tx, ctx, {
         action: "tenant.create",
@@ -121,6 +138,13 @@ export class PlatformTenantsService {
           entitlements: dto.entitlements,
           // Records *why* the workspace ended up with these modules.
           presetApplied,
+          // What the workspace actually opened with — roles are the part that
+          // used to be missing entirely.
+          rolesSeeded: provisioned?.roles ?? [],
+          storefrontCreated: provisioned?.storefront ?? false,
+          // Only present when someone deliberately crossed the vertical's
+          // ceiling — the whole point of the flag is that it leaves a trail.
+          ...(allowOutsideType ? { allowOutsideType: true } : {}),
         },
       }),
     );
@@ -200,8 +224,17 @@ export class PlatformTenantsService {
   }
 
   async update(id: string, body: unknown, ctx: AuditCtx) {
-    const input = adminTenantPatchSchema.parse(body);
+    const { allowOutsideType, ...input } = adminTenantPatchSchema.parse(body);
     const before = await this.tenantSvc.byId(id);
+
+    // Validate the *effective* pair, not just what was sent. Changing type
+    // alone has to re-check entitlements nobody mentioned — otherwise flipping
+    // an e-commerce workspace to `warehouse` would quietly leave its storefront
+    // modules in place and the ceiling would mean nothing after day one.
+    const effectiveType = input.type ?? before.type;
+    const effectiveEntitlements = input.entitlements ?? before.entitlements;
+    assertModulesWithinType(effectiveType, effectiveEntitlements, allowOutsideType);
+
     const dto = await this.tenantSvc.update(before.slug, input);
     // TenantService caches slug -> tenant for 30s; without this the edit looks
     // like it silently failed for half a minute.
@@ -284,9 +317,20 @@ export class PlatformTenantsController {
   // Declared BEFORE @Get(":id") — Nest matches in declaration order, and
   // "module-presets" would otherwise be read as a workspace id.
   @Get("module-presets")
-  @ApiOperation({ summary: "Default modules per tenant type, and the full module list" })
+  @ApiOperation({
+    summary: "Per-type module defaults and ceilings, plus the full module list",
+    description:
+      "`presets` is what a new workspace of each type starts with; `allowedByType` is the widest " +
+      "set it may ever hold. The tenant-create form should offer only `allowedByType` and " +
+      "pre-tick `presets`, so a warehouse workspace is never offered a storefront in the first place.",
+  })
   presets() {
-    return { presets: MODULE_PRESETS, allModules: MODULE_KEYS };
+    return {
+      presets: MODULE_PRESETS,
+      allowedByType: TYPE_ALLOWED_MODULES,
+      configFieldsByType: TYPE_CONFIG_FIELDS,
+      allModules: MODULE_KEYS,
+    };
   }
 
   @Get(":id")

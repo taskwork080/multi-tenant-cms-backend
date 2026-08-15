@@ -6,16 +6,16 @@ import {
   Header,
   Post,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { z } from "zod";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
 import { ProductsImportService } from "./products-import.service";
+import { RequireCapability } from "../auth/decorators";
+import { RequireModule } from "../tenant/module.decorator";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
@@ -28,13 +28,14 @@ const modeSchema = z.enum(["create", "upsert"]).default("create");
 @ApiTags("products")
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
+@RequireModule("products")
 @Controller("api/:tenant/products")
-@UseGuards(TenantGuard)
 export class ProductsImportController {
   constructor(private readonly importer: ProductsImportService) {}
 
   /** CSV header row users fill in before importing. */
   @Get("import/template")
+  @RequireCapability("catalog.view")
   @ApiOperation({ summary: "Download the bulk-import CSV template" })
   @Header("Content-Type", "text/csv; charset=utf-8")
   @Header("Content-Disposition", 'attachment; filename="product-import-template.csv"')
@@ -43,6 +44,7 @@ export class ProductsImportController {
   }
 
   @Post("import")
+  @RequireCapability("catalog.manage")
   @ApiOperation({
     summary: "Bulk import products from a CSV or XLSX file",
     description:

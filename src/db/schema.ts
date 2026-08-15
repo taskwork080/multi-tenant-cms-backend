@@ -861,6 +861,20 @@ export const staffUsers = pgTable(
     roleId: uuid("role_id").references(() => roles.id, { onDelete: "set null" }),
     status: text("status").notNull().default("invited"), // active | invited | suspended | deactivated
     lastActive: timestamp("last_active", { withTimezone: true }),
+
+    // --- Self-service profile -------------------------------------------------
+    // Owned by the person, not by an administrator: everything below is edited
+    // through /api/me/profile and needs no capability, because a workspace that
+    // makes you file a ticket to fix the spelling of your own name is not one
+    // people trust with anything else.
+    /** R2 URL from the existing uploads presign flow. */
+    avatarUrl: text("avatar_url"),
+    phone: text("phone"),
+    jobTitle: text("job_title"),
+    /** Per-user override of tenants.default_language. Null = follow the workspace. */
+    locale: text("locale"),
+    /** IANA zone, e.g. "Europe/Berlin". Null = render in the viewer's own zone. */
+    timezone: text("timezone"),
     ...timestamps,
   },
   (t) => [

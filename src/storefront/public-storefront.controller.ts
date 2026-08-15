@@ -2,6 +2,7 @@ import { Controller, Get, Headers, Param, Query } from "@nestjs/common";
 import { ApiOperation, ApiParam, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { Public } from "../auth/decorators";
 import { StorefrontService } from "./storefront.service";
+import { Throttle } from "@nestjs/throttler";
 
 /**
  * The anonymous read API behind every public storefront.
@@ -27,6 +28,9 @@ import { StorefrontService } from "./storefront.service";
  * matched by /api/:tenant/:resource with tenant="public".
  */
 @ApiTags("storefront-public")
+// Tighter than the global ceiling: there is no token here to attribute abuse
+// to, only an IP, and every route hits the database.
+@Throttle({ default: { ttl: 60_000, limit: 60 } })
 @Public()
 @Controller("api/public/storefront")
 export class PublicStorefrontController {

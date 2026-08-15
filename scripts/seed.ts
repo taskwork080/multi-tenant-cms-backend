@@ -25,9 +25,13 @@ const SEED_TENANTS = [
     codEnabled: false,
     allowForceDeleteCategory: false,
     cordNo: "VE-CORD-001",
+    // Was seeded with cms/sales/discounts/reviews/customers/tax on a *warehouse*
+    // workspace — i.e. a warehouse tenant with a storefront and a marketing
+    // surface. That was only possible because the vertical was never enforced;
+    // TYPE_ALLOWED_MODULES now rejects it, so the fixture matches the product.
     entitlements: [
-      "dashboard", "schedule", "products", "categories", "brands", "sales", "inventory",
-      "customers", "cms", "discounts", "reviews", "returns", "shipments", "tax", "staff",
+      "dashboard", "schedule", "products", "categories", "brands", "inventory",
+      "inventoryInbound", "inventoryOutbound", "returns", "shipments", "delivery", "staff",
       "roles", "activity", "configuration", "notes", "messages", "packing", "packingShipments",
     ],
   },
@@ -47,10 +51,15 @@ const SEED_TENANTS = [
     codEnabled: false,
     allowForceDeleteCategory: false,
     cordNo: "NS-2026-355",
+    // The full warehouse vertical — this is the fixture the entitlement and
+    // capability matrices exercise, so it holds every inventory sub-module and
+    // none of the commerce surface (`customers` and `tax` were outside the
+    // warehouse ceiling and are gone).
     entitlements: [
-      "dashboard", "schedule", "products", "categories", "inventory", "warehouses", "delivery",
-      "location", "shipments", "customers", "tax", "staff", "roles", "activity", "configuration",
-      "notes", "messages", "packing", "packingShipments",
+      "dashboard", "schedule", "products", "categories", "manufacturers", "inventory",
+      "inventoryInbound", "inventoryOutbound", "inventoryTransfers", "inventoryCounts",
+      "warehouses", "delivery", "location", "shipments", "returns", "staff", "roles",
+      "activity", "configuration", "notes", "messages", "packing", "packingShipments",
     ],
   },
   {
@@ -73,7 +82,7 @@ const SEED_TENANTS = [
     cordNo: "AGRI-CORD-77",
     entitlements: [
       "dashboard", "schedule", "products", "categories", "brands", "manufacturers", "badges",
-      "sales", "inventory", "warehouses", "delivery", "location", "customers", "sellers", "cms",
+      "sales", "inventory", "warehouses", "delivery", "location", "customers", "sellers", "cms", "storefront",
       "discounts", "reviews", "returns", "shipments", "tax", "staff", "roles", "activity",
       "configuration", "language", "notes", "messages", "packing", "packingShipments",
     ],

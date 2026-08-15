@@ -1,6 +1,7 @@
+import { BadRequestException } from "@nestjs/common";
 import { z } from "zod";
 import { AUDIT_ACTIONS, AUDIT_TARGET_TYPES } from "./audit.actions";
-import { MODULE_KEYS, TENANT_TYPES } from "./module-presets";
+import { MODULE_KEYS, TENANT_TYPES, modulesOutsideType } from "./module-presets";
 
 /**
  * Request schemas for /api/admin/*.
@@ -98,6 +99,12 @@ export const adminTenantPatchSchema = z
     // will ever match, so reject it here instead of storing it.
     entitlements: z.array(z.enum(MODULE_KEYS)).optional(),
     config: tenantConfigSchema.optional(),
+    /**
+     * Deliberately cross the vertical's ceiling (e.g. give a warehouse
+     * workspace a storefront). Recorded in the audit row so the exception is
+     * traceable — see assertModulesWithinType.
+     */
+    allowOutsideType: z.boolean().optional(),
   })
   .strict();
 
@@ -138,6 +145,33 @@ export const adminTenantCreateSchema = adminTenantPatchSchema.extend({
   name: z.string().trim().min(1),
   type: z.enum(TENANT_TYPES),
 });
+
+/**
+ * The vertical's ceiling (module-presets.ts TYPE_ALLOWED_MODULES), enforced.
+ *
+ * Not a zod refinement because the check needs the *effective* type and the
+ * *effective* entitlements — on a PATCH either may be absent from the body and
+ * come from the stored row instead, and changing `type` has to re-validate
+ * entitlements nobody sent.
+ */
+export function assertModulesWithinType(
+  type: string,
+  entitlements: readonly string[],
+  allowOutsideType: boolean | undefined,
+) {
+  if (allowOutsideType) return;
+  const outside = modulesOutsideType(type, entitlements);
+  if (outside.length) {
+    throw new BadRequestException({
+      message:
+        `A "${type}" workspace cannot hold: ${outside.join(", ")}. ` +
+        `Change the workspace type, or pass allowOutsideType to override deliberately.`,
+      code: "MODULES_OUTSIDE_TYPE",
+      type,
+      outside,
+    });
+  }
+}
 
 // --- Platform admins -------------------------------------------------------
 

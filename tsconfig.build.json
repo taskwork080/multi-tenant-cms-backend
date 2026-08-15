@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  // `nest build` picks this up automatically. Without it, the *.spec.ts files
+  // added alongside the code they cover were compiled into dist/ and shipped —
+  // test doubles and vitest imports in a production artifact.
+  //
+  // scripts/ is excluded for the same reason: migrate/seed/backfill are run with
+  // ts-node from the repo, never from dist.
+  "exclude": ["node_modules", "dist", "scripts", "test", "**/*.spec.ts", "**/*.test.ts"]
+}

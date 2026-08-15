@@ -45,15 +45,30 @@ export class R2Service {
     return this.client;
   }
 
-  async presignUpload(tenantSlug: string, fileName: string, contentType: string, kind = "misc"): Promise<PresignResult> {
+  async presignUpload(
+    tenantSlug: string,
+    fileName: string,
+    contentType: string,
+    kind = "misc",
+    contentLength?: number,
+  ): Promise<PresignResult> {
     const client = this.ensure();
     const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    // The tenant slug prefix is the isolation boundary the download path checks
+    // against — see UploadsController.presignDownload.
     const key = `${tenantSlug}/${kind}/${randomUUID()}-${safeName}`;
     const expiresIn = 600;
 
     const uploadUrl = await getSignedUrl(
       client,
-      new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: contentType }),
+      // ContentLength binds the signature to the declared size, so a presigned
+      // URL for a 2MB image cannot be reused to push a 5GB object.
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ContentType: contentType,
+        ...(contentLength ? { ContentLength: contentLength } : {}),
+      }),
       { expiresIn },
     );
 

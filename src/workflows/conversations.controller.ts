@@ -1,13 +1,13 @@
-import { Body, Controller, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, NotFoundException, Param, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { conversations } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
 import { ChatGateway } from "../chat/chat.gateway";
+import { RequireModule } from "../tenant/module.decorator";
 
 const messageSchema = z.object({
   sender: z.enum(["customer", "support"]).default("support"),
@@ -29,8 +29,8 @@ const messageSchema = z.object({
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
 @ApiParam({ name: "id", description: "Conversation id (uuid)" })
+@RequireModule("messages")
 @Controller("api/:tenant/conversations/:id")
-@UseGuards(TenantGuard)
 export class ConversationsController {
   constructor(
     private readonly tdb: TenantDb,

@@ -1,10 +1,10 @@
-import { Controller, Get, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { parseDateWindow } from "../common/date-window";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
 import { DashboardService, type Period } from "./dashboard.service";
+import { RequireModule } from "../tenant/module.decorator";
 
 const PERIODS = new Set<Period>(["7", "30", "all"]);
 
@@ -12,8 +12,8 @@ const PERIODS = new Set<Period>(["7", "30", "all"]);
 @ApiTags("dashboard")
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
+@RequireModule("dashboard")
 @Controller("api/:tenant/dashboard")
-@UseGuards(TenantGuard)
 export class DashboardController {
   constructor(private readonly dashboard: DashboardService) {}
 

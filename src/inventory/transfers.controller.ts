@@ -1,4 +1,4 @@
-import { Body, ConflictException, Controller, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, ConflictException, Controller, NotFoundException, Param, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -8,9 +8,10 @@ import { TenantDb } from "../db/tenant-db.service";
 import { CurrentUser } from "../auth/decorators";
 import { actorOf, type AuthUser } from "../auth/auth.types";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
 import { InventoryService } from "./inventory.service";
+import { RequireModule } from "../tenant/module.decorator";
+import { RequireCapability } from "../auth/decorators";
 
 const createSchema = z.object({
   fromWarehouseId: z.string().uuid(),
@@ -43,8 +44,9 @@ const receiveSchema = z.object({
 @ApiTags("inventory")
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
+@RequireModule("inventoryTransfers")
+@RequireCapability("inventory.transfer")
 @Controller("api/:tenant/stock-transfers")
-@UseGuards(TenantGuard)
 export class TransfersController {
   constructor(
     private readonly tdb: TenantDb,

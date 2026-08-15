@@ -1,11 +1,12 @@
-import { Controller, Get, Param, UseGuards } from "@nestjs/common";
+import { Controller, Get, Param } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { and, eq, sql } from "drizzle-orm";
 import { orderItems, orders, reviews } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
+import { RequireModule } from "../tenant/module.decorator";
+import { RequireCapability } from "../auth/decorators";
 
 /**
  * Per-product rollups for the product detail page.
@@ -21,8 +22,9 @@ import type { TenantDto } from "../tenant/tenant.service";
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
 @ApiParam({ name: "id", description: "Product id (uuid)" })
+@RequireModule("products")
+@RequireCapability("catalog.view")
 @Controller("api/:tenant/products/:id")
-@UseGuards(TenantGuard)
 export class ProductStatsController {
   constructor(private readonly tdb: TenantDb) {}
 

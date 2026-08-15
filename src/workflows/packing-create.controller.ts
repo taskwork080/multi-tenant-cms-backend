@@ -1,11 +1,12 @@
-import { Controller, Get, Post, UseGuards } from "@nestjs/common";
+import { Controller, Get, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { eq, sql } from "drizzle-orm";
 import { packingLists } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
+import { RequireModule } from "../tenant/module.decorator";
+import { RequireCapability } from "../auth/decorators";
 
 /**
  * Creates an empty packing list with a server-assigned sequential ref.
@@ -27,8 +28,9 @@ import type { TenantDto } from "../tenant/tenant.service";
 @ApiTags("packing")
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
+@RequireModule("packing")
+@RequireCapability("packing.manage")
 @Controller("api/:tenant/packing-lists")
-@UseGuards(TenantGuard)
 export class PackingCreateController {
   constructor(private readonly tdb: TenantDb) {}
 

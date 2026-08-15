@@ -29,12 +29,44 @@ npm run start:dev         # http://localhost:4000
 > networks use the **Session Pooler** string (Dashboard → Connect), e.g.
 > `postgresql://postgres.<ref>:<password>@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres`.
 
+> ⚠️ **RLS only applies if the API connects as `app_api`.** The `postgres` role has
+> `rolbypassrls = true`, which makes every `FORCE ROW LEVEL SECURITY` policy a no-op
+> for the API and leaves isolation resting on application `WHERE` clauses alone.
+> `drizzle/0011_app_api_role.sql` creates a `NOBYPASSRLS` role and grants it DML;
+> finish the switch by hand (it needs a password no migration should contain):
+>
+> ```sql
+> alter role app_api with password '<strong-password>';
+> ```
+> ```bash
+> # then point DATABASE_URL at it and restart
+> DATABASE_URL=postgresql://app_api:<password>@<host>:5432/postgres
+> ```
+> Verify:
+> ```sql
+> select rolbypassrls from pg_roles where rolname = 'app_api';            -- false
+> select relname, relrowsecurity, relforcerowsecurity from pg_class
+>  where relname in ('products','orders','staff_users');                  -- all t/t
+> ```
+
+### RBAC backfill (one time)
+
+Tenant roles are enforced server-side. Existing roles carry no capability keys, so
+run this once after migrating — it gives every role its vertical's capability set
+and every staff row a role, without anyone losing access:
+
+```bash
+npm run db:backfill -- --dry   # report only
+npm run db:backfill            # apply
+```
+
 ## Architecture
 
 | Piece | Where | Notes |
 |---|---|---|
 | Schema (fully relational) | `src/db/schema.ts` | ~40 tables. Nested UI collections (order items, shipment events, chat messages, packing items → cartons → sizes, note attachments…) are child tables with `ON DELETE CASCADE` FKs. |
-| Tenant isolation | `src/db/tenant-db.service.ts` + `drizzle/0001_rls.sql` | Every request runs in a transaction pinned with `set_config('app.tenant_id', …)`; **forced RLS policies** on every table make cross-tenant rows invisible even if a WHERE clause is forgotten. |
+| Tenant isolation | `src/db/tenant-db.service.ts` + `drizzle/0001_rls.sql` | Every request runs in a transaction pinned with `set_config('app.tenant_id', …)`, **and** every query filters on `tenant_id` explicitly. Forced RLS policies exist on every table as the backstop — but see the warning below: they only bite once the API connects as a `NOBYPASSRLS` role. |
+| Access control | `src/auth/` + `src/crud/resource-registry.ts` | Three independent gates. App role (`@Roles`) → what kind of account this is. Module entitlement (`@RequireModule`, `CrudService.resolve`) → what the *workspace* bought. Capability (`@RequireCapability`, `ResourceDef.capabilities`) → what this *user's tenant role* may do. |
 | Auth | `src/auth/` | Verifies Supabase Auth JWTs (JWKS, or `SUPABASE_JWT_SECRET` for legacy HS256). Role + tenant come from `app_metadata.role` / `app_metadata.tenant_id`. `AUTH_DEV_BYPASS=true` skips auth for local dev only. |
 | Tenant resolution | `src/tenant/` | `:tenant` slug → tenant row (cached 30 s); guard rejects users whose `tenant_id` doesn't match (platform admins pass). `GET/PATCH /api/tenants/:tenant` serves config + entitlements. |
 | Generic CRUD | `src/crud/` | One registry (`resource-registry.ts`) maps 25 resource slugs → tables + child relations. List/get/create/update/delete + `?q=` search, filters, sort, pagination come for free; nested arrays are composed from / persisted to child tables automatically. |

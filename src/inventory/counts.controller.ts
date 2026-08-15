@@ -1,6 +1,6 @@
-import { Body, ConflictException, Controller, NotFoundException, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, ConflictException, Controller, NotFoundException, Param, Patch, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/db.tokens";
 import { cycleCountItems, cycleCounts, inventoryLevels, warehouses } from "../db/schema";
@@ -8,9 +8,10 @@ import { TenantDb } from "../db/tenant-db.service";
 import { CurrentUser } from "../auth/decorators";
 import { actorOf, type AuthUser } from "../auth/auth.types";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
 import { InventoryService } from "./inventory.service";
+import { RequireModule } from "../tenant/module.decorator";
+import { RequireCapability } from "../auth/decorators";
 
 const createSchema = z.object({
   warehouseId: z.string().uuid(),
@@ -36,8 +37,9 @@ const countSchema = z.object({
 @ApiTags("inventory")
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
+@RequireModule("inventoryCounts")
+@RequireCapability("inventory.count")
 @Controller("api/:tenant/cycle-counts")
-@UseGuards(TenantGuard)
 export class CountsController {
   constructor(
     private readonly tdb: TenantDb,

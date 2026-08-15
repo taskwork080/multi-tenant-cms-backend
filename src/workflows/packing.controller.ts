@@ -1,4 +1,4 @@
-import { Body, Controller, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, NotFoundException, Param, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -8,8 +8,9 @@ import { TenantDb } from "../db/tenant-db.service";
 import { FulfilmentService } from "../inventory/fulfilment.service";
 import { InventoryService } from "../inventory/inventory.service";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
+import { RequireModule } from "../tenant/module.decorator";
+import { RequireCapability } from "../auth/decorators";
 
 const confirmSchema = z.object({
   signedBy: z.string().optional(),
@@ -32,8 +33,9 @@ const shipEventSchema = z.object({
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
 @ApiParam({ name: "id", description: "Packing list id (uuid)" })
+@RequireModule("packing")
+@RequireCapability("packing.manage")
 @Controller("api/:tenant/packing-lists/:id")
-@UseGuards(TenantGuard)
 export class PackingController {
   constructor(
     private readonly tdb: TenantDb,

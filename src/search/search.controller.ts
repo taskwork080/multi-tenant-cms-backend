@@ -1,7 +1,8 @@
-import { Controller, Get, Query, UseGuards } from "@nestjs/common";
+import { Controller, Get, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from "@nestjs/swagger";
+import { CurrentAccess } from "../auth/decorators";
+import type { UserAccess } from "../auth/access.service";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
 import { SearchService, type SearchHit } from "./search.service";
 
@@ -16,7 +17,6 @@ import { SearchService, type SearchHit } from "./search.service";
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
 @Controller("api/:tenant/search")
-@UseGuards(TenantGuard)
 export class SearchController {
   constructor(private readonly search: SearchService) {}
 
@@ -26,10 +26,11 @@ export class SearchController {
   @ApiQuery({ name: "perType", required: false, description: "Max hits per resource (default 4)" })
   async run(
     @CurrentTenant() tenant: TenantDto,
+    @CurrentAccess() access: UserAccess,
     @Query("q") q?: string,
     @Query("perType") perType?: string,
   ): Promise<SearchHit[]> {
     const n = Math.min(20, Math.max(1, parseInt(perType ?? "4", 10) || 4));
-    return this.search.search(tenant, q ?? "", n);
+    return this.search.search(tenant, q ?? "", n, access);
   }
 }

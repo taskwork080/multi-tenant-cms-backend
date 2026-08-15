@@ -1,7 +1,6 @@
-import { Controller, Get, UseGuards } from "@nestjs/common";
+import { Controller, Get } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
 import { AlertsService } from "./alerts.service";
 
@@ -10,7 +9,6 @@ import { AlertsService } from "./alerts.service";
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
 @Controller("api/:tenant/alerts")
-@UseGuards(TenantGuard)
 export class AlertsController {
   constructor(private readonly alerts: AlertsService) {}
 

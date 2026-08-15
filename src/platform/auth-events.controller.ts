@@ -7,6 +7,7 @@ import { CurrentUser } from "../auth/decorators";
 import { TenantDb } from "../db/tenant-db.service";
 import { authEvents, staffUsers } from "../db/schema";
 import { authEventSchema } from "./dto";
+import { Throttle } from "@nestjs/throttler";
 
 /** Ignore repeat sign-ins inside this window (token refreshes, tab reopens). */
 const DEDUPE_MS = 60_000;
@@ -55,7 +56,21 @@ export class AuthEventsService {
       // This is what finally makes staff_users.last_active real — nothing
       // populated it before.
       if (staff && event === "sign_in") {
-        await tx.update(staffUsers).set({ lastActive: new Date() }).where(eq(staffUsers.id, staff.id));
+        await tx
+          .update(staffUsers)
+          .set({
+            lastActive: new Date(),
+            // Signing in IS accepting the invitation — you cannot get a token
+            // without following the invite link and setting a password. Nothing
+            // used to make this transition, so every invited user stayed
+            // `invited` forever: the staff list showed a pending badge for
+            // people who had been working in the app for months, and
+            // "resend invite" was offered to users who never needed one.
+            // Only ever promotes `invited`; suspended and deactivated are
+            // administrative states that a sign-in must not clear.
+            ...(staff.status === "invited" ? { status: "active" as const } : {}),
+          })
+          .where(eq(staffUsers.id, staff.id));
       }
       return { recorded: true };
     });
@@ -71,6 +86,9 @@ export class AuthEventsService {
  */
 @ApiTags("auth")
 @ApiBearerAuth()
+// Any authenticated user writes their own row here; it is an append-only log,
+// so it is the easiest table in the schema to flood.
+@Throttle({ default: { ttl: 60_000, limit: 30 } })
 @Controller("api/auth/events")
 export class AuthEventsController {
   constructor(private readonly svc: AuthEventsService) {}

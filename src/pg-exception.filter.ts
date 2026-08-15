@@ -27,17 +27,26 @@ export class PgExceptionFilter implements ExceptionFilter {
     const pg = (exception.cause ?? {}) as PgError;
 
     switch (pg.code) {
+      // `pg.detail` is deliberately logged, not returned: Postgres spells it
+      // "Key (email)=(someone@example.com) already exists", which hands the
+      // caller another tenant's column values and the constraint's internal
+      // name. The constraint name alone is enough for a client to say which
+      // field collided.
       case "23505":
+        this.logger.warn(`unique_violation on ${pg.constraint_name ?? "?"}: ${pg.detail ?? exception.message}`);
         return res.status(409).json({
           statusCode: 409,
           error: "Conflict",
-          message: pg.detail ?? "A record with the same unique value already exists",
+          message: "A record with the same unique value already exists",
+          constraint: pg.constraint_name,
         });
       case "23503":
+        this.logger.warn(`fk_violation on ${pg.constraint_name ?? "?"}: ${pg.detail ?? exception.message}`);
         return res.status(400).json({
           statusCode: 400,
           error: "Bad Request",
-          message: pg.detail ?? "A referenced record does not exist",
+          message: "A referenced record does not exist",
+          constraint: pg.constraint_name,
         });
       case "23502":
         return res.status(400).json({

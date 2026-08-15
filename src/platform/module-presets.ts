@@ -35,6 +35,7 @@ export const MODULE_KEYS = [
   "customers",
   "sellers",
   "cms",
+  "storefront",
   "discounts",
   "reviews",
   "returns",
@@ -87,6 +88,7 @@ const ECOMMERCE: ModuleKey[] = [
   "discounts",
   "tax",
   "cms",
+  "storefront",
   "inventory",
   "shipments",
   "delivery",
@@ -129,4 +131,117 @@ export const MODULE_PRESETS: Record<TenantType, ModuleKey[]> = {
 export function presetFor(type: string): ModuleKey[] {
   const preset = MODULE_PRESETS[type as TenantType] ?? MODULE_PRESETS.ecommerce;
   return [...preset].sort();
+}
+
+// -----------------------------------------------------------------------------
+// Ceilings
+// -----------------------------------------------------------------------------
+
+/**
+ * The widest set of modules a workspace of each type may hold — as opposed to
+ * MODULE_PRESETS, which is only what it *starts* with.
+ *
+ * Without this, "type" was a suggestion: the preset chose an opening sidebar
+ * and nothing afterwards stopped a warehouse workspace being handed `cms` and
+ * `sales`. The seed itself did exactly that (volt is a warehouse tenant seeded
+ * with cms/sales/discounts/reviews), which is the clearest evidence the vertical
+ * was never enforced.
+ *
+ * A ceiling is deliberately wider than a preset. Presets are the sensible
+ * default; ceilings are the line that makes the vertical mean something. A
+ * warehouse can be given `warehouses` and `sellers` on request — it can never
+ * be given a storefront, a marketing surface or a consumer sales funnel,
+ * because that is a different product and a different support burden.
+ *
+ * Escape hatch: a platform admin can still cross the line explicitly with
+ * `allowOutsideType: true`, which is recorded in the audit row. The point is
+ * that it becomes a decision someone made rather than a default nobody noticed.
+ */
+const WAREHOUSE_CEILING: ModuleKey[] = [
+  ...BASE,
+  "products",
+  "categories",
+  "manufacturers",
+  "brands",
+  "inventory",
+  "inventoryInbound",
+  "inventoryOutbound",
+  "inventoryTransfers",
+  "inventoryCounts",
+  "warehouses",
+  "packing",
+  "packingShipments",
+  "shipments",
+  "delivery",
+  "location",
+  "returns",
+  "sellers",
+];
+
+/** Commerce verticals may hold anything: they are the superset product. */
+const COMMERCE_CEILING: ModuleKey[] = [...MODULE_KEYS];
+
+export const TYPE_ALLOWED_MODULES: Record<TenantType, ModuleKey[]> = {
+  ecommerce: COMMERCE_CEILING,
+  warehouse: WAREHOUSE_CEILING,
+  marketplace: COMMERCE_CEILING,
+};
+
+export function allowedFor(type: string): ModuleKey[] {
+  const allowed = TYPE_ALLOWED_MODULES[type as TenantType] ?? TYPE_ALLOWED_MODULES.ecommerce;
+  return [...allowed].sort();
+}
+
+/** Modules in `entitlements` that this tenant type may not hold. Empty means OK. */
+export function modulesOutsideType(type: string, entitlements: readonly string[]): string[] {
+  const allowed = new Set<string>(TYPE_ALLOWED_MODULES[type as TenantType] ?? TYPE_ALLOWED_MODULES.ecommerce);
+  return entitlements.filter((m) => !allowed.has(m));
+}
+
+// -----------------------------------------------------------------------------
+// Config fields per vertical
+// -----------------------------------------------------------------------------
+
+/**
+ * `tenants` flattens one TenantConfig for every workspace, but half of it only
+ * means anything to a shop: cash on delivery, a GA4 measurement id, a Meta
+ * pixel, the default seller shown on a storefront listing. A warehouse
+ * workspace was offered all of them in Settings, which is how a settings page
+ * teaches people not to trust it.
+ *
+ * Universal fields are listed once and shared; the commerce set is additive.
+ */
+const UNIVERSAL_CONFIG = [
+  "defaultLanguage",
+  "currency",
+  "currencySymbol",
+  "locationServiceOn",
+  "cordNo",
+] as const;
+
+const COMMERCE_CONFIG = [
+  "ga4Id",
+  "pixelId",
+  "strictOrderFlow",
+  "defaultSellerName",
+  "codEnabled",
+  "allowForceDeleteCategory",
+] as const;
+
+export type TenantConfigField = (typeof UNIVERSAL_CONFIG)[number] | (typeof COMMERCE_CONFIG)[number];
+
+export const TYPE_CONFIG_FIELDS: Record<TenantType, TenantConfigField[]> = {
+  ecommerce: [...UNIVERSAL_CONFIG, ...COMMERCE_CONFIG],
+  marketplace: [...UNIVERSAL_CONFIG, ...COMMERCE_CONFIG],
+  warehouse: [...UNIVERSAL_CONFIG],
+};
+
+export function configFieldsFor(type: string): TenantConfigField[] {
+  return TYPE_CONFIG_FIELDS[type as TenantType] ?? TYPE_CONFIG_FIELDS.ecommerce;
+}
+
+/** Config keys in `config` that this tenant type has no use for. */
+export function configFieldsOutsideType(type: string, config: Record<string, unknown>): string[] {
+  const allowed = new Set<string>(configFieldsFor(type));
+  return Object.keys(config).filter((k) => !allowed.has(k));
 }

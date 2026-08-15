@@ -38,7 +38,14 @@ const sendSchema = z.object({
  *   on   "chat:message" { conversationId, message }
  *   on   "shipment:update" { shipmentId, ... }   (rooms joined via "shipment:join")
  */
-@WebSocketGateway({ cors: { origin: true, credentials: true } })
+/**
+ * CORS mirrors the HTTP allowlist. It used to be `origin: true`, i.e. any
+ * origin — so a page on any domain could open a socket with a stolen token
+ * while the REST API on the same server refused the same origin outright.
+ */
+const WS_ORIGINS = (process.env.CORS_ORIGIN ?? "http://localhost:5000").split(",").map((o) => o.trim());
+
+@WebSocketGateway({ cors: { origin: WS_ORIGINS, credentials: true } })
 export class ChatGateway implements OnGatewayConnection {
   @WebSocketServer() server: Server;
   private readonly logger = new Logger(ChatGateway.name);
@@ -54,7 +61,9 @@ export class ChatGateway implements OnGatewayConnection {
     try {
       const { token, tenant: slug } = socket.handshake.auth as { token?: string; tenant?: string };
       let user: AuthUser;
-      if (!token && this.config.get("AUTH_DEV_BYPASS") === "true") {
+      // Same double gate as AuthGuard: the flag alone is not enough, because
+      // this branch hands out platform_admin to an anonymous socket.
+      if (!token && process.env.NODE_ENV !== "production" && this.config.get("AUTH_DEV_BYPASS") === "true") {
         user = { id: "dev", role: PLATFORM_ADMIN };
       } else if (token) {
         user = await this.jwt.verify(token);
@@ -63,7 +72,12 @@ export class ChatGateway implements OnGatewayConnection {
       }
       if (!slug) throw new Error("missing tenant");
       const tenant = await this.tenants.bySlug(slug);
-      if (user.role !== PLATFORM_ADMIN && user.tenantId !== tenant.id) throw new Error("wrong tenant");
+      if (user.role !== PLATFORM_ADMIN) {
+        if (user.tenantId !== tenant.id) throw new Error("wrong tenant");
+        // TenantGuard closes a suspended workspace to its own members on the
+        // HTTP side; a long-lived socket must not be the way back in.
+        if (tenant.status !== "active") throw new Error(`workspace ${tenant.status}`);
+      }
 
       socket.data.user = user;
       socket.data.tenant = tenant;

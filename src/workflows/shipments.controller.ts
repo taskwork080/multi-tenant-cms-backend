@@ -1,13 +1,14 @@
-import { Body, Controller, NotFoundException, Param, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, NotFoundException, Param, Post } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { chatMessages, shipmentEvents, shipments } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
 import { ChatGateway } from "../chat/chat.gateway";
+import { RequireModule } from "../tenant/module.decorator";
+import { RequireCapability } from "../auth/decorators";
 
 const eventSchema = z.object({
   status: z.enum(["processing", "dispatched", "in_transit", "out_for_delivery", "delivered", "cancelled"]),
@@ -29,8 +30,9 @@ const messageSchema = z.object({
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
 @ApiParam({ name: "id", description: "Shipment id (uuid)" })
+@RequireModule("shipments")
+@RequireCapability("shipments.manage")
 @Controller("api/:tenant/shipments/:id")
-@UseGuards(TenantGuard)
 export class ShipmentsController {
   constructor(
     private readonly tdb: TenantDb,

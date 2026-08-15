@@ -1,7 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { CurrentTenant } from "../tenant/tenant.decorator";
-import { TenantGuard } from "../tenant/tenant.guard";
 import type { TenantDto } from "../tenant/tenant.service";
 import {
   navLocationSchema,
@@ -10,6 +9,8 @@ import {
   pageUpdateSchema,
 } from "./storefront.schemas";
 import { StorefrontService } from "./storefront.service";
+import { RequireModule } from "../tenant/module.decorator";
+import { RequireCapability } from "../auth/decorators";
 
 /**
  * Admin-side storefront management.
@@ -26,8 +27,9 @@ import { StorefrontService } from "./storefront.service";
 @ApiTags("storefront")
 @ApiBearerAuth()
 @ApiParam({ name: "tenant", description: "Tenant slug" })
+@RequireModule("storefront")
+@RequireCapability("storefront.manage")
 @Controller("api/:tenant/storefront")
-@UseGuards(TenantGuard)
 export class StorefrontController {
   constructor(private readonly storefront: StorefrontService) {}
 
