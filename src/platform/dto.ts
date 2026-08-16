@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { z } from "zod";
+import { APP_ROLES } from "../auth/roles";
 import { AUDIT_ACTIONS, AUDIT_TARGET_TYPES } from "./audit.actions";
 import { MODULE_KEYS, TENANT_TYPES, modulesOutsideType } from "./module-presets";
 
@@ -11,8 +12,15 @@ import { MODULE_KEYS, TENANT_TYPES, modulesOutsideType } from "./module-presets"
  * the matching change there or the client will send bodies the server rejects.
  */
 
-/** Application roles carried in the JWT's app_metadata.role. */
-export const APP_ROLES = ["owner", "admin", "staff", "viewer"] as const;
+/**
+ * Application roles carried in the JWT's app_metadata.role.
+ *
+ * Re-exported rather than redeclared: the role model lives in src/auth/roles.ts
+ * so the guards and these schemas cannot drift into accepting different sets.
+ * platform_admin is deliberately not in here — it is never granted through a
+ * request body.
+ */
+export { APP_ROLES };
 
 /** CMS-level account states. `deactivated` and `suspended` both ban in GoTrue. */
 export const USER_STATUSES = ["active", "invited", "suspended", "deactivated"] as const;

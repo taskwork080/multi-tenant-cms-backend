@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Get, Param, Patch } from "@nestj
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { z } from "zod";
 import { RequireCapability, Roles } from "../auth/decorators";
+import { PLATFORM_ADMIN } from "../auth/roles";
 import { configFieldsOutsideType } from "../platform/module-presets";
 import { CurrentTenant } from "./tenant.decorator";
 import { TenantService, type TenantDto } from "./tenant.service";
@@ -53,7 +54,7 @@ export class TenantsController {
   constructor(private readonly tenants: TenantService) {}
 
   @Get()
-  @Roles("platform_admin")
+  @Roles(PLATFORM_ADMIN)
   @ApiOperation({ summary: "List all tenants (platform admin only)" })
   list() {
     return this.tenants.list();
@@ -72,7 +73,10 @@ export class TenantsController {
   }
 
   @Patch(":tenant")
-  @Roles("owner", "admin")
+  // Both tenant roles, because @RequireCapability is the real gate here: the
+  // `admin` app role used to carry this and it meant nothing the Role could not
+  // say. A staff member reaches it iff their Role grants settings.manage.
+  @Roles("owner", "staff")
   @RequireCapability("settings.manage")
   @ApiParam({ name: "tenant", description: "Tenant slug" })
   @ApiOperation({

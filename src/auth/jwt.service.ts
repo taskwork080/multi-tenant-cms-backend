@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { AuthUser } from "./auth.types";
+import { normalizeAppRole } from "./roles";
 
 /**
  * Verifies Supabase Auth access tokens.
@@ -45,7 +46,10 @@ export class JwtVerifier {
     return {
       id: String(payload.sub ?? ""),
       email: (payload as Record<string, any>).email,
-      role: appMeta.role ?? "viewer",
+      // Normalised, not passed through: a token minted before the role collapse
+      // still says "admin" or "viewer", and every guard downstream compares
+      // against the three-role model. Unknown/absent degrades to "staff".
+      role: normalizeAppRole(appMeta.role),
       tenantId: appMeta.tenant_id,
     };
   }

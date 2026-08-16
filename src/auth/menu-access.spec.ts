@@ -10,7 +10,10 @@ import { isCapabilityKey } from "./capabilities";
 describe("resolveMenuAccess", () => {
   const opts = { bypass: false, hasRole: true };
 
-  it("rule 1 — platform_admin / owner bypass everything", () => {
+  it("rule 1 — the bypass role sees everything", () => {
+    // Only platform_admin passes bypass:true here now — see roles.ts and
+    // roles.spec.ts. Owner deliberately does not, or the platform admin's menu
+    // grant on an owner would be discarded.
     expect(resolveMenuAccess(["menu:/dashboard"], { bypass: true, hasRole: true }).unrestricted).toBe(true);
   });
 

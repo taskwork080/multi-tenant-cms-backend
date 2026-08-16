@@ -124,6 +124,13 @@ export class PlatformAdminsService {
   /**
    * Promote an existing tenant user to platform admin.
    *
+   * THERE IS ONLY EVER ONE. This route is not the way to add a colleague; it is
+   * the recovery path for when the seat is vacant (the sole admin was deleted
+   * in GoTrue, say) and the CLI is not reachable. While an admin exists it
+   * refuses, and drizzle/0014_single_platform_admin.sql refuses underneath it
+   * even if this check is bypassed — the promote path used to be exactly how a
+   * tenant owner could end up holding platform powers.
+   *
    * The staff_users row and its tenant_id are deliberately LEFT INTACT:
    * staff_users.tenant_id is NOT NULL so there is no tenant-less state to move
    * into, auth_events references the row, and destroying someone's history on
@@ -133,6 +140,13 @@ export class PlatformAdminsService {
    */
   async promote(body: unknown, ctx: AuditCtx) {
     const input = promoteAdminSchema.parse(body);
+
+    if ((await this.count()) >= 1) {
+      throw new ConflictException(
+        "This platform already has its administrator. Demote the current one before appointing another.",
+      );
+    }
+
     const staff = await this.users.load(input.staffUserId);
     this.users.assertNotSelf(ctx, staff, "promote your own account");
 

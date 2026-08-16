@@ -12,12 +12,12 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { PLATFORM_ADMIN, actorOf, type AuthUser } from "../auth/auth.types";
+import { actorOf, type AuthUser } from "../auth/auth.types";
 import { CurrentUser, RequireCapability, Roles } from "../auth/decorators";
 import { AccessService } from "../auth/access.service";
+import { APP_ROLES, PLATFORM_ADMIN, RANK } from "../auth/roles";
 import { staffUsers } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
-import { APP_ROLES } from "../platform/dto";
 import { PlatformUsersService } from "../platform/platform-users.service";
 import type { AuditCtx } from "../platform/audit.service";
 import { RequireModule } from "./module.decorator";
@@ -59,12 +59,36 @@ const inviteSchema = z
   .strict();
 
 /**
- * App roles, most privileged first. An inviter may grant their own rank or
- * lower — never higher. Without this a `staff` member with staff.manage could
- * invite an `owner` and let themselves back in as one, which turns a tenant
- * capability into privilege escalation.
+ * Who may hand out which app role.
+ *
+ * Two rules, in this order:
+ *
+ *  1. `owner` is appointed by the platform admin and nobody else. An owner
+ *     inviting a co-owner would otherwise pass the rank check below (equal rank
+ *     is allowed, so staff can hire staff), and "who runs this workspace" is a
+ *     platform decision, not a tenant one.
+ *  2. Otherwise the rank ladder: an inviter may grant their own rank or lower,
+ *     never higher. Without it a `staff` member holding staff.manage could mint
+ *     themselves a more privileged account — a tenant capability turned into
+ *     privilege escalation.
+ *
+ * A free function rather than a private method so staff-invite.spec.ts can
+ * assert the policy directly, without standing up the service's three
+ * dependencies to reach it.
  */
-const RANK: Record<string, number> = { owner: 0, admin: 1, staff: 2, viewer: 3 };
+export function assertMayGrant(inviterRole: string, appRole: string): void {
+  if (inviterRole === PLATFORM_ADMIN) return;
+
+  if (appRole === "owner") {
+    throw new ForbiddenException("Only a platform administrator can appoint a workspace owner.");
+  }
+
+  const mine = RANK[inviterRole];
+  const theirs = RANK[appRole];
+  if (mine === undefined || theirs === undefined || theirs < mine) {
+    throw new ForbiddenException(`You cannot grant the "${appRole}" role.`);
+  }
+}
 
 @Injectable()
 export class StaffInviteService {
@@ -73,15 +97,6 @@ export class StaffInviteService {
     private readonly tdb: TenantDb,
     private readonly access: AccessService,
   ) {}
-
-  private assertMayGrant(inviter: AuthUser, appRole: string) {
-    if (inviter.role === PLATFORM_ADMIN) return;
-    const mine = RANK[inviter.role];
-    const theirs = RANK[appRole];
-    if (mine === undefined || theirs === undefined || theirs < mine) {
-      throw new ForbiddenException(`You cannot grant the "${appRole}" role.`);
-    }
-  }
 
   /** The staff row, proven to belong to this workspace. */
   private async staffInTenant(tenant: TenantDto, id: string) {
@@ -98,7 +113,7 @@ export class StaffInviteService {
 
   async invite(tenant: TenantDto, inviter: AuthUser, body: unknown, ctx: AuditCtx) {
     const input = inviteSchema.parse(body);
-    this.assertMayGrant(inviter, input.appRole);
+    assertMayGrant(inviter.role, input.appRole);
 
     // tenantId comes from the resolved route tenant, never the body — that is
     // the whole reason this wrapper exists rather than exposing the platform
@@ -146,7 +161,7 @@ export class StaffInviteService {
 @ApiParam({ name: "tenant", description: "Tenant slug" })
 @RequireModule("staff")
 @RequireCapability("staff.manage")
-@Roles("owner", "admin", "staff")
+@Roles("owner", "staff")
 @Controller("api/:tenant/staff")
 export class StaffInviteController {
   constructor(private readonly svc: StaffInviteService) {}

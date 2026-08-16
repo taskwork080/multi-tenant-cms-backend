@@ -31,16 +31,37 @@ import { TenantProvisioningService } from "./tenant-provisioning.service";
  * modules — importing CrudModule here would drag its catch-all controller
  * forward and defeat invariant 2.
  */
+/**
+ * Every controller this module registers. Exported and used as the @Module
+ * `controllers` array itself, so the boot check below and platform.roles.spec.ts
+ * both audit the REAL list.
+ *
+ * Previously the check kept its own hand-maintained copy, and its own comment
+ * admitted the consequence: a controller added here but forgotten there shipped
+ * unguarded and booted fine. Deriving both from one array removes the gap
+ * rather than documenting it.
+ */
+export const PLATFORM_CONTROLLERS = [
+  PlatformUsersController,
+  PlatformTenantsController,
+  PlatformRolesController,
+  PlatformAdminsController,
+  PlatformOverviewController,
+  PlatformAuditController,
+  AuthEventsController,
+] as const;
+
+/**
+ * The deliberate exceptions to invariant 1. Adding to this list is how you say
+ * "I meant that" — and it is small on purpose.
+ *
+ * AuthEventsController: any authenticated user records their own sign-in, and
+ * the handler ignores the request body when deciding whose row to write.
+ */
+export const UNGUARDED_PLATFORM_CONTROLLERS: readonly unknown[] = [AuthEventsController];
+
 @Module({
-  controllers: [
-    PlatformUsersController,
-    PlatformTenantsController,
-    PlatformRolesController,
-    PlatformAdminsController,
-    PlatformOverviewController,
-    PlatformAuditController,
-    AuthEventsController,
-  ],
+  controllers: [...PLATFORM_CONTROLLERS],
   providers: [
     AuditService,
     PlatformUsersService,
@@ -56,29 +77,34 @@ import { TenantProvisioningService } from "./tenant-provisioning.service";
 })
 export class PlatformModule {
   constructor() {
-    // Invariant 1, enforced at boot rather than in a test: a missing decorator
-    // is silent, and the repo has no test runner to catch it. Failing to start
-    // is the correct response to "these routes are currently unguarded".
-    // Every controller in this module except AuthEventsController belongs here.
-    // The check only inspects what is listed, so an omission is silent.
-    const guarded = [
-      PlatformUsersController,
-      PlatformTenantsController,
-      PlatformRolesController,
-      PlatformAdminsController,
-      PlatformOverviewController,
-      PlatformAuditController,
-    ];
-    const unguarded = guarded.filter((c) => !(Reflect.getMetadata(ROLES, c) ?? []).includes(PLATFORM_ADMIN));
+    // Invariant 1, enforced at boot as well as in platform.roles.spec.ts: a
+    // missing decorator is silent, and failing to start is the correct response
+    // to "these routes are currently unguarded". Derived from
+    // PLATFORM_CONTROLLERS, so a controller cannot be registered without also
+    // being audited.
+    const unguarded = findUnguardedPlatformControllers();
     if (unguarded.length) {
       throw new Error(
         `Platform controllers missing @Roles(PLATFORM_ADMIN): ${unguarded.map((c) => c.name).join(", ")}. ` +
           `These routes read and write across every tenant and must never be reachable without it.`,
       );
     }
-    // AuthEventsController is intentionally not in that list: any authenticated
-    // user records their own sign-in, and the handler ignores the request body
-    // when deciding whose row to write.
-    new Logger("PlatformModule").log(`Super-admin routes active at /api/admin/* (${guarded.length} controllers guarded)`);
+    const guarded = PLATFORM_CONTROLLERS.length - UNGUARDED_PLATFORM_CONTROLLERS.length;
+    new Logger("PlatformModule").log(`Super-admin routes active at /api/admin/* (${guarded} controllers guarded)`);
   }
+}
+
+/**
+ * Controllers registered by this module that neither carry @Roles(PLATFORM_ADMIN)
+ * nor appear in UNGUARDED_PLATFORM_CONTROLLERS.
+ *
+ * Shared by the boot check above and platform.roles.spec.ts so the two cannot
+ * disagree about what "guarded" means.
+ */
+export function findUnguardedPlatformControllers(): { name: string }[] {
+  return PLATFORM_CONTROLLERS.filter(
+    (c) =>
+      !UNGUARDED_PLATFORM_CONTROLLERS.includes(c) &&
+      !((Reflect.getMetadata(ROLES, c) as string[] | undefined) ?? []).includes(PLATFORM_ADMIN),
+  );
 }

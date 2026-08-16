@@ -4,7 +4,8 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import postgres from "postgres";
 import * as schema from "../src/db/schema";
 import { isCapabilityKey, intersectWithEntitlements, CAPABILITIES } from "../src/auth/capabilities";
-import { managerTemplateFor, permissionsFor, templatesFor } from "../src/platform/role-templates";
+import { ensureTenantRoles } from "../src/platform/role-provisioning";
+import { managerTemplateFor, templatesFor } from "../src/platform/role-templates";
 
 /**
  * Gives every existing workspace a working permission model, so capability
@@ -71,28 +72,23 @@ async function main() {
 
     // --- Pass 2 (first, so pass 3 has a Viewer to point at) ------------------
     if (existing.length === 0) {
-      for (const template of templatesFor(tenant.type)) {
-        const permissions = permissionsFor(template, entitlements);
-        console.log(
-          `[${tenant.slug}] + role "${template.name}" (${permissions.filter(isCapabilityKey).length} capabilities)`,
+      if (DRY) {
+        for (const template of templatesFor(tenant.type)) {
+          console.log(`[${tenant.slug}] + role "${template.name}"`);
+        }
+      } else {
+        // Shared with scripts/seed.ts — see src/platform/role-provisioning.ts.
+        rolesSeeded += await ensureTenantRoles(db, tenant, entitlements, (name) =>
+          console.log(`[${tenant.slug}] + role "${name}"`),
         );
-        if (DRY) continue;
-
-        const [role] = await db
-          .insert(schema.roles)
-          .values({ tenantId: tenant.id, name: template.name, description: template.description })
-          .returning({ id: schema.roles.id });
-        await db.insert(schema.rolePermissions).values(
-          permissions.map((permission, sort) => ({
-            tenantId: tenant.id,
-            roleId: role.id,
-            permission,
-            sort,
-          })),
+        // Re-read so pass 3 below has real ids to point its orphans at.
+        existing.push(
+          ...(await db
+            .select({ id: schema.roles.id, name: schema.roles.name })
+            .from(schema.roles)
+            .where(eq(schema.roles.tenantId, tenant.id))),
         );
-        existing.push({ id: role.id, name: template.name });
       }
-      rolesSeeded += templatesFor(tenant.type).length;
     } else {
       // --- Pass 1 ------------------------------------------------------------
       const perms = await db

@@ -70,6 +70,21 @@ export interface ResourceDef {
    */
   deny?: ("create" | "update" | "delete")[];
   /**
+   * Columns the generic layer must never write, on top of the global
+   * READONLY_COLUMNS (id, tenantId, createdAt, updatedAt).
+   *
+   * Stripped rather than rejected, exactly as those are: an edit form round-
+   * trips the whole row, so 400-ing on a field the client merely echoed back
+   * unchanged would break editing outright.
+   *
+   * `staff` again: `email` is also the GoTrue login address, so changing it
+   * here silently desynchronises the two systems and the person keeps signing
+   * in with the old one — PATCH /api/admin/users owns that protocol. And
+   * `authUserId` is the link between a workspace row and an identity; letting a
+   * tenant write it means pointing your staff row at someone else's login.
+   */
+  immutable?: string[];
+  /**
    * How this resource appears in the tenant's own Activity Log
    * (`activities.kind`, plus the column to use as the human label).
    *
@@ -263,6 +278,9 @@ export const RESOURCES: Record<string, ResourceDef> = {
     // Creating/removing a staff member also creates/removes a GoTrue identity.
     // See ResourceDef.deny — /api/:tenant/staff/invite owns that protocol.
     deny: ["create", "delete"],
+    // tenantId is already globally read-only, which is what keeps one person in
+    // one workspace; these two are the staff-specific pair. See immutable.
+    immutable: ["email", "authUserId"],
   },
   activities: {
     table: s.activities,

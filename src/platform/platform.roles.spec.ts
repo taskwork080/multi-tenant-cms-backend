@@ -1,37 +1,40 @@
 import "reflect-metadata";
 import { describe, expect, it } from "vitest";
-import { PLATFORM_ADMIN } from "../auth/auth.types";
+import { PLATFORM_ADMIN } from "../auth/roles";
 import { ROLES } from "../auth/decorators";
-import { PlatformAdminsController } from "./platform-admins.controller";
-import { PlatformAuditController } from "./platform-audit.controller";
-import { PlatformOverviewController } from "./platform-overview.controller";
-import { PlatformRolesController } from "./platform-roles.controller";
-import { PlatformTenantsController } from "./platform-tenants.controller";
-import { PlatformUsersController } from "./platform-users.controller";
+import {
+  PLATFORM_CONTROLLERS,
+  UNGUARDED_PLATFORM_CONTROLLERS,
+  findUnguardedPlatformControllers,
+} from "./platform.module";
 import { AuthEventsController } from "./auth-events.controller";
 
 /**
- * The spec platform.module.ts and platform-users.controller.ts have both
- * referenced since they were written, and which never existed. Their comments
- * say "platform.roles.spec.ts asserts it" — now it does.
+ * The super-admin surface is admin-only.
  *
- * PlatformModule's constructor already throws at boot if a *listed* controller
- * loses its decorator. This covers the gap that check cannot: it only inspects
- * the controllers someone remembered to add to its own array.
+ * This used to iterate a list of controllers written out by hand — the same
+ * failure mode PlatformModule's own boot check had, and its comment admitted:
+ * "the check only inspects what is listed, so an omission is silent." A new
+ * controller added to the module and forgotten here shipped unguarded and
+ * passed. Both now walk PLATFORM_CONTROLLERS, which IS the module's
+ * `controllers` array, so registering a route and auditing it are the same act.
  */
 describe("platform surface is admin-only", () => {
-  const guarded = [
-    PlatformUsersController,
-    PlatformTenantsController,
-    PlatformRolesController,
-    PlatformAdminsController,
-    PlatformOverviewController,
-    PlatformAuditController,
-  ];
+  const audited = PLATFORM_CONTROLLERS.filter((c) => !UNGUARDED_PLATFORM_CONTROLLERS.includes(c));
 
-  it.each(guarded.map((c) => [c.name, c] as const))("%s carries @Roles(PLATFORM_ADMIN)", (_name, controller) => {
+  it("has controllers to audit", () => {
+    // Guards against the whole suite silently passing on an empty list if the
+    // module is ever refactored to build `controllers` some other way.
+    expect(audited.length).toBeGreaterThan(0);
+  });
+
+  it.each(audited.map((c) => [c.name, c] as const))("%s carries @Roles(PLATFORM_ADMIN)", (_name, controller) => {
     const roles: string[] = Reflect.getMetadata(ROLES, controller) ?? [];
     expect(roles).toContain(PLATFORM_ADMIN);
+  });
+
+  it("reports nothing unguarded — the same check PlatformModule runs at boot", () => {
+    expect(findUnguardedPlatformControllers().map((c) => c.name)).toEqual([]);
   });
 
   /**
@@ -41,7 +44,16 @@ describe("platform surface is admin-only", () => {
    * they have to delete this test and read why first.
    */
   it("AuthEventsController is intentionally open to any authenticated user", () => {
+    expect(UNGUARDED_PLATFORM_CONTROLLERS).toContain(AuthEventsController);
     const roles: string[] = Reflect.getMetadata(ROLES, AuthEventsController) ?? [];
     expect(roles).not.toContain(PLATFORM_ADMIN);
+  });
+
+  /**
+   * The exception list is the one place "unguarded on purpose" can be declared,
+   * so it must stay short enough that a reviewer reads every entry.
+   */
+  it("keeps the deliberate-exception list minimal", () => {
+    expect(UNGUARDED_PLATFORM_CONTROLLERS).toHaveLength(1);
   });
 });

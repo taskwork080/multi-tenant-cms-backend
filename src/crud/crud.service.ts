@@ -449,19 +449,22 @@ export class CrudService {
     for (const child of def.children ?? []) {
       if (body[child.field] !== undefined) childInputs[child.field] = body[child.field];
     }
-    return { values: this.sanitize(def.table, body), childInputs };
+    return { values: this.sanitize(def.table, body, def.immutable), childInputs };
   }
 
   /**
    * Keeps only real, writable columns; ISO strings on timestamp columns become
    * Dates and empty strings on nullable columns become null so optional form
    * fields clear cleanly.
+   *
+   * `immutable` adds per-resource columns to the global read-only set — see
+   * ResourceDef.immutable for why they are stripped rather than rejected.
    */
-  private sanitize(table: AnyTable, body: Row): Row {
+  private sanitize(table: AnyTable, body: Row, immutable?: string[]): Row {
     const cols = getTableColumns(table);
     const out: Row = {};
     for (const [key, value] of Object.entries(body)) {
-      if (READONLY_COLUMNS.has(key)) continue;
+      if (READONLY_COLUMNS.has(key) || immutable?.includes(key)) continue;
       const col = cols[key];
       if (!col) continue;
       let v: unknown = value;

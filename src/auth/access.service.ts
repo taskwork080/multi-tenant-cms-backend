@@ -2,9 +2,10 @@ import { Injectable } from "@nestjs/common";
 import { asc, eq } from "drizzle-orm";
 import { TenantDb } from "../db/tenant-db.service";
 import { rolePermissions, roles, staffUsers } from "../db/schema";
-import { PLATFORM_ADMIN, actorOf, type AuthUser } from "./auth.types";
+import { actorOf, type AuthUser } from "./auth.types";
 import { isCapabilityKey } from "./capabilities";
 import { resolveMenuAccess, type MenuAccess } from "./menu-access";
+import { PLATFORM_ADMIN, bypassesCapabilityChecks, bypassesMenuChecks } from "./roles";
 
 /**
  * What a user is allowed to do, resolved from their staff record.
@@ -36,16 +37,19 @@ export interface UserAccess {
   /** The capability subset, pre-split so guards don't refilter per request. */
   capabilities: string[];
   /**
-   * True when this user's app role skips capability checks entirely
+   * True when this user's app role skips CAPABILITY checks entirely
    * (platform_admin, owner). Kept on the resolved object so the guard has one
    * thing to read rather than re-deriving from AuthUser.
+   *
+   * Note this says nothing about menus: an owner has bypass=true and can still
+   * have a restricted `menu` below. See roles.ts for why the two differ.
    */
   bypass: boolean;
   /** Resolved server-side so precedence lives in exactly one place. */
   menu: MenuAccess;
 }
 
-/** Platform admins and users with no workspace skip the staff lookup entirely. */
+/** Platform admins skip the staff lookup entirely. */
 export const BYPASS_ACCESS: UserAccess = {
   actor: "system",
   staffUserId: null,
@@ -59,17 +63,28 @@ export const BYPASS_ACCESS: UserAccess = {
 };
 
 /**
- * App roles that skip menu *and* capability checks.
+ * The inverse: a token with no workspace at all.
  *
- * owner is included on purpose: there is no in-app recovery from an owner
- * locking themselves out of /staff/roles — only a platform admin or raw SQL.
- * The same argument that made owner bypass menus makes it bypass capabilities,
- * and splitting the two would give you an owner who can see the roles page but
- * not save it.
+ * This used to share BYPASS_ACCESS with platform admins — `PLATFORM_ADMIN ||
+ * !user.tenantId` — which meant a token missing its tenant_id claim resolved to
+ * bypass:true and an unrestricted menu. That is a fail-open on precisely the
+ * claim an attacker would strip, so the two cases are now separate constants.
+ *
+ * Reaching here is a legitimate state (a user whose staff row was moved, an
+ * identity created outside the invite flow), and AuthGate already renders "No
+ * workspace assigned" for it. Nothing is granted in the meantime.
  */
-export function bypassesAccessChecks(role: string): boolean {
-  return role === PLATFORM_ADMIN || role === "owner";
-}
+export const NO_ACCESS: UserAccess = {
+  actor: "system",
+  staffUserId: null,
+  roleId: null,
+  roleName: null,
+  staffStatus: null,
+  permissions: [],
+  capabilities: [],
+  bypass: false,
+  menu: { unrestricted: false, hrefs: [] },
+};
 
 @Injectable()
 export class AccessService {
@@ -87,7 +102,9 @@ export class AccessService {
   constructor(private readonly tdb: TenantDb) {}
 
   async forUser(user: AuthUser): Promise<UserAccess> {
-    if (user.role === PLATFORM_ADMIN || !user.tenantId) return { ...BYPASS_ACCESS, actor: actorOf(user) };
+    if (user.role === PLATFORM_ADMIN) return { ...BYPASS_ACCESS, actor: actorOf(user) };
+    // No workspace: nothing to look up, and nothing to grant. See NO_ACCESS.
+    if (!user.tenantId) return { ...NO_ACCESS, actor: actorOf(user) };
 
     const hit = this.cache.get(user.id);
     if (hit && Date.now() - hit.at < AccessService.TTL_MS) return hit.access;
@@ -136,8 +153,12 @@ export class AccessService {
     // ON DELETE SET NULL) — either way, don't blank their admin.
     const head = rows[0];
     const permissions = rows.map((r) => r.permission).filter((p): p is string => p !== null);
-    const bypass = bypassesAccessChecks(user.role);
 
+    // The two bypasses are asked separately on purpose. An owner skips
+    // capabilities but NOT menus, so the platform admin's menu grant on an
+    // owner actually binds. Nothing changes for an owner who has no Role, or
+    // whose Role carries no `menu:` keys — resolveMenuAccess's rules 2 and 4
+    // still resolve those to unrestricted.
     return {
       actor: actorOf(user),
       staffUserId: head?.staffUserId ?? null,
@@ -146,8 +167,11 @@ export class AccessService {
       staffStatus: head?.staffStatus ?? null,
       permissions,
       capabilities: permissions.filter(isCapabilityKey),
-      bypass,
-      menu: resolveMenuAccess(permissions, { bypass, hasRole: Boolean(head?.roleId) }),
+      bypass: bypassesCapabilityChecks(user.role),
+      menu: resolveMenuAccess(permissions, {
+        bypass: bypassesMenuChecks(user.role),
+        hasRole: Boolean(head?.roleId),
+      }),
     };
   }
 }

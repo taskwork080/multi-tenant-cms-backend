@@ -3,15 +3,21 @@ export interface AuthUser {
   id: string;
   email?: string;
   /**
-   * Application role, read from app_metadata.role:
-   * "platform_admin" (cross-tenant) | "owner" | "admin" | "staff" | "viewer"
+   * Application role, read from app_metadata.role and passed through
+   * normalizeAppRole(), so it is always one of:
+   * "platform_admin" (cross-tenant) | "owner" | "staff"
    */
   role: string;
   /** Tenant this user belongs to (app_metadata.tenant_id). Absent for platform admins. */
   tenantId?: string;
 }
 
-export const PLATFORM_ADMIN = "platform_admin";
+/**
+ * Re-exported so the dozens of existing `from "./auth.types"` imports keep
+ * working. The role model itself lives in ./roles — see that file for why there
+ * are three roles and not five.
+ */
+export { PLATFORM_ADMIN } from "./roles";
 
 /**
  * Display name for an activity/audit `actor` column.

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -879,7 +880,20 @@ export const staffUsers = pgTable(
   },
   (t) => [
     index("staff_users_tenant_idx").on(t.tenantId),
+    // Redundant under the global index below, which is strictly stronger, but
+    // it exists in the database (0000_init) and this file's job is to say what
+    // is actually there. Removing it here would schedule a silent DROP the next
+    // time anyone runs db:generate.
     uniqueIndex("staff_users_tenant_email").on(t.tenantId, t.email),
+    // ONE PERSON = ONE WORKSPACE, and this is the half that enforces it.
+    //
+    // Global, not per-tenant: a JWT carries exactly one tenant_id, so the same
+    // address holding staff rows in two workspaces would be a person the app
+    // can never fully sign in as. Created in drizzle/0008_platform_admin.sql;
+    // it was missing from this list for four migrations, which made the
+    // snapshot claim the weaker (tenant_id, email) uniqueness that used to be
+    // here. Moving someone is POST /api/admin/users/:id/move-tenant.
+    uniqueIndex("staff_users_email_lower_key").on(sql`lower(${t.email})`),
     // One staff row per Supabase identity. NULLs are distinct in Postgres, so
     // rows still awaiting an auth user don't collide.
     uniqueIndex("staff_users_auth_user_id_key").on(t.authUserId),
