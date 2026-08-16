@@ -17,8 +17,11 @@ describe("AccessService.forUser — the no-database branches", () => {
   // `tdb` is never reached on either branch; both return before the lookup.
   const svc = new AccessService(null as never);
 
+  /** AuthUser minus the fields no access decision reads. */
+  const as = (u: Omit<AuthUser, "mustChangePassword">): AuthUser => ({ ...u, mustChangePassword: false });
+
   it("grants a platform admin the bypass", async () => {
-    const user: AuthUser = { id: "u1", email: "root@cms.test", role: PLATFORM_ADMIN };
+    const user = as({ id: "u1", email: "root@cms.test", role: PLATFORM_ADMIN });
     const access = await svc.forUser(user);
     expect(access.bypass).toBe(true);
     expect(access.menu.unrestricted).toBe(true);
@@ -27,12 +30,12 @@ describe("AccessService.forUser — the no-database branches", () => {
 
   it("grants a platform admin the bypass even with a home workspace", async () => {
     // A promoted admin keeps their staff row and tenant_id; the role decides.
-    const access = await svc.forUser({ id: "u2", role: PLATFORM_ADMIN, tenantId: "t1" });
+    const access = await svc.forUser(as({ id: "u2", role: PLATFORM_ADMIN, tenantId: "t1" }));
     expect(access.bypass).toBe(true);
   });
 
   it("grants a tenantless NON-admin nothing at all", async () => {
-    const access = await svc.forUser({ id: "u3", email: "nobody@x.test", role: "staff" });
+    const access = await svc.forUser(as({ id: "u3", email: "nobody@x.test", role: "staff" }));
     expect(access.bypass).toBe(false);
     expect(access.menu.unrestricted).toBe(false);
     expect(access.menu.hrefs).toEqual([]);
@@ -40,7 +43,7 @@ describe("AccessService.forUser — the no-database branches", () => {
   });
 
   it("grants a tenantless OWNER nothing either — owner is not a platform role", async () => {
-    const access = await svc.forUser({ id: "u4", role: "owner" });
+    const access = await svc.forUser(as({ id: "u4", role: "owner" }));
     expect(access.bypass).toBe(false);
     expect(access.menu.unrestricted).toBe(false);
   });
@@ -48,8 +51,8 @@ describe("AccessService.forUser — the no-database branches", () => {
   it("keeps the actor identifiable on both branches", async () => {
     // activities.actor / platform_audit_log.actor_email read this; "system" for
     // a real person makes the audit trail useless.
-    expect((await svc.forUser({ id: "u5", email: "a@x.test", role: "staff" })).actor).toBe("a@x.test");
-    expect((await svc.forUser({ id: "u6", role: "staff" })).actor).toBe("u6");
+    expect((await svc.forUser(as({ id: "u5", email: "a@x.test", role: "staff" }))).actor).toBe("a@x.test");
+    expect((await svc.forUser(as({ id: "u6", role: "staff" }))).actor).toBe("u6");
   });
 });
 

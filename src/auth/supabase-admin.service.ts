@@ -69,12 +69,14 @@ export class SupabaseAdminService implements OnModuleInit {
   private readonly log = new Logger(SupabaseAdminService.name);
   private url = "";
   private key = "";
+  private publishableKey = "";
 
   constructor(private readonly config: ConfigService) {}
 
   onModuleInit() {
     this.url = (this.config.get<string>("SUPABASE_URL") ?? "").replace(/\/+$/, "");
     this.key = this.config.get<string>("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    this.publishableKey = this.config.get<string>("SUPABASE_PUBLISHABLE_KEY") ?? "";
     // Warn loudly but do not refuse to boot: this service is in a @Global
     // module, so throwing here would take down the whole API for deployments
     // that never touch /api/admin/*. Configuration is checked at first use
@@ -154,6 +156,42 @@ export class SupabaseAdminService implements OnModuleInit {
     const link = res.action_link ?? res.properties?.action_link;
     if (!link) throw new ServiceUnavailableException("Supabase Auth returned no action link");
     return { actionLink: link };
+  }
+
+  /**
+   * Whether `password` is currently the account's password, checked by asking
+   * GoTrue for a token the way a sign-in would.
+   *
+   * Deliberately NOT on the service-role path: that key mints sessions for any
+   * account without a password at all, so using it here would verify nothing.
+   * The publishable (anon) key is what a browser sign-in uses, which is exactly
+   * the check we want. The token this returns is discarded — the caller already
+   * holds a verified session; this only proves the human is still there before
+   * a password is replaced.
+   */
+  async verifyPassword(email: string, password: string): Promise<boolean> {
+    if (!this.url || !this.publishableKey) {
+      throw new ServiceUnavailableException(
+        "Password changes are not configured on this server: SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY must both be set.",
+      );
+    }
+    let res: Response;
+    try {
+      res = await fetch(`${this.url}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers: { apikey: this.publishableKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+    } catch (err) {
+      this.log.error(`GoTrue password grant unreachable: ${(err as Error).message}`);
+      throw new ServiceUnavailableException("Supabase Auth is unreachable");
+    }
+    if (res.ok) return true;
+    // 400/401 is the ordinary "wrong password" answer. Anything else is an
+    // operator problem the caller must not read as a failed credential check.
+    if (res.status === 400 || res.status === 401) return false;
+    this.log.warn(`GoTrue password grant -> ${res.status}`);
+    throw new ServiceUnavailableException("Supabase Auth rejected the password check");
   }
 
   // -------------------------------------------------------------------------

@@ -51,6 +51,10 @@ export class JwtVerifier {
       // against the three-role model. Unknown/absent degrades to "staff".
       role: normalizeAppRole(appMeta.role),
       tenantId: appMeta.tenant_id,
+      // Strict === true: the flag is cleared by writing `false`, and an account
+      // that predates the feature has no key at all. Anything other than a
+      // literal true means "no forced change pending".
+      mustChangePassword: appMeta.must_change_password === true,
     };
   }
 }

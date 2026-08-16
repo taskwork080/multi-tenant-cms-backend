@@ -79,6 +79,9 @@ async function main() {
         appRole,
         sendInvite: false,
         password,
+        // The operator chose this password for themselves; the forced-change
+        // flow is for passwords an admin issues to someone else.
+        mustChangePassword: false,
       },
       CLI_CTX,
     );

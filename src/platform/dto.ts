@@ -35,9 +35,25 @@ export const adminUserCreateSchema = z
     email,
     roleId: uuid.nullable().optional(),
     appRole: z.enum(APP_ROLES).default("staff"),
-    sendInvite: z.boolean().default(true),
+    // Defaults to false: the ordinary path is the admin handing over a temporary
+    // password, which the user is forced to replace on first sign-in. Invite
+    // links remain available for self-serve onboarding — /:tenant/staff/invite
+    // passes sendInvite: true explicitly and is unaffected by this default.
+    sendInvite: z.boolean().default(false),
     // Only honoured when sendInvite is false; otherwise the invite link sets it.
     password: z.string().min(8).max(128).optional(),
+    /**
+     * Defaults to "yes, whenever a password was supplied" — an admin-chosen
+     * password is temporary by construction. The opt-out exists for the
+     * provisioning scripts (scripts/seed.ts, scripts/create-user.ts), where the
+     * operator IS the account holder and choosing their own password twice is
+     * just friction.
+     *
+     * Unlike resetPasswordSchema's "set", this is not gated on
+     * PLATFORM_ALLOW_PASSWORD_SET: that flag protects accounts that already have
+     * an owner and data behind them. A brand new account has neither.
+     */
+    mustChangePassword: z.boolean().optional(),
   })
   .strict()
   .refine((v) => v.sendInvite || !!v.password, {
@@ -68,14 +84,23 @@ export const moveTenantSchema = z
   })
   .strict();
 
+/**
+ * `temp` and `set` both write a password directly; they differ in what the admin
+ * is left holding afterwards. `temp` marks the account must-change, so the
+ * password stops working the moment the user signs in — which is why it is NOT
+ * gated on PLATFORM_ALLOW_PASSWORD_SET the way `set` is. `set` leaves a
+ * permanent password the admin also knows, i.e. silent shared access.
+ */
 export const resetPasswordSchema = z
   .object({
-    mode: z.enum(["link", "set"]).default("link"),
+    // Default stays "link": it is the only mode that needs no further input, so
+    // a body that omits both fields must not become a validation error.
+    mode: z.enum(["link", "temp", "set"]).default("link"),
     password: z.string().min(8).max(128).optional(),
   })
   .strict()
-  .refine((v) => v.mode !== "set" || !!v.password, {
-    message: "A password is required in 'set' mode",
+  .refine((v) => v.mode === "link" || !!v.password, {
+    message: "A password is required in 'temp' and 'set' mode",
     path: ["password"],
   });
 

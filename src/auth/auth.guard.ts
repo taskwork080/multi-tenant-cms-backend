@@ -29,7 +29,7 @@ export class AuthGuard implements CanActivate {
       // hard-gated on NODE_ENV as well as the flag, and main.ts refuses to boot
       // if both are set in production.
       if (process.env.NODE_ENV !== "production" && this.config.get("AUTH_DEV_BYPASS") === "true") {
-        req.user = { id: "dev", email: "dev@local", role: PLATFORM_ADMIN };
+        req.user = { id: "dev", email: "dev@local", role: PLATFORM_ADMIN, mustChangePassword: false };
         return true;
       }
       throw new UnauthorizedException("Missing Bearer token");

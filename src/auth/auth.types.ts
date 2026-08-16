@@ -10,6 +10,17 @@ export interface AuthUser {
   role: string;
   /** Tenant this user belongs to (app_metadata.tenant_id). Absent for platform admins. */
   tenantId?: string;
+  /**
+   * True while the account still holds a password an admin issued for it
+   * (app_metadata.must_change_password). The frontend routes such a session to
+   * /change-password and lets nothing else render until it is cleared.
+   *
+   * Lives in app_metadata rather than user_metadata on purpose: user_metadata is
+   * writable by the account holder through supabase.auth.updateUser(), so the
+   * flag would be one client call away from being dropped without the password
+   * ever changing. app_metadata needs the service-role key.
+   */
+  mustChangePassword: boolean;
 }
 
 /**

@@ -1,4 +1,13 @@
-import { BadRequestException, Body, Controller, Get, Injectable, Patch, Query } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Injectable,
+  Patch,
+  Post,
+  Query,
+} from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -8,6 +17,7 @@ import { AccessService, type UserAccess } from "./access.service";
 import { CAPABILITIES } from "./capabilities";
 import { CurrentAccess, CurrentUser } from "./decorators";
 import { PLATFORM_ADMIN, type AuthUser } from "./auth.types";
+import { SupabaseAdminService } from "./supabase-admin.service";
 
 /**
  * The signed-in user's own profile.
@@ -57,6 +67,24 @@ const profilePatchSchema = z
   // that reports success.
   .refine((v) => Object.keys(v).length > 0, { message: "No profile fields to update" });
 
+/**
+ * MIRRORS the frontend changePasswordSchema in src/lib/schemas.ts.
+ *
+ * `currentPassword` is checked even though the caller already holds a verified
+ * session: a session can be a laptop someone walked away from, and this is the
+ * one write that would lock its owner out of their own account.
+ */
+const passwordChangeSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Enter your current password"),
+    newPassword: z.string().min(8, "Use at least 8 characters").max(128),
+  })
+  .strict()
+  .refine((v) => v.currentPassword !== v.newPassword, {
+    message: "The new password must be different from the current one",
+    path: ["newPassword"],
+  });
+
 export interface MyProfile {
   /** "staff" = a workspace member; "platform" = a super admin with no staff row. */
   kind: "staff" | "platform";
@@ -89,6 +117,7 @@ export class ProfileService {
   constructor(
     private readonly tdb: TenantDb,
     private readonly access: AccessService,
+    private readonly supabase: SupabaseAdminService,
   ) {}
 
   /** Capability keys → their catalog entries, for display. */
@@ -248,7 +277,8 @@ export class ProfileService {
       // profile would be a lie the UI cannot detect, so say so plainly.
       throw new BadRequestException({
         message:
-          "A platform admin account has no workspace profile. Change your name or password in Supabase Auth.",
+          "A platform admin account has no workspace profile. Change your name in Supabase Auth; " +
+          "your password can be changed here.",
         code: "PLATFORM_PROFILE_READONLY",
       });
     }
@@ -296,6 +326,45 @@ export class ProfileService {
     // shadowed for up to 30s by a stale entry.
     this.access.invalidate(user.id);
     return this.get(user, access);
+  }
+
+  /**
+   * Change your own password, and clear any forced-change flag with it.
+   *
+   * This is a backend endpoint rather than a client-side supabase.auth
+   * .updateUser() call — which is how the account page used to do it — because
+   * clearing app_metadata.must_change_password needs the service-role key. Doing
+   * the two halves separately would mean a client that changed its password and
+   * then failed to clear the flag, leaving the user forced to change it again.
+   *
+   * Works for every caller including platform admins, who have no staff row:
+   * nothing here touches the database.
+   */
+  async changePassword(user: AuthUser, body: unknown): Promise<{ ok: true }> {
+    const input = passwordChangeSchema.parse(body);
+
+    // The AUTH_DEV_BYPASS identity ("dev", dev@local) is not a real GoTrue user;
+    // GoTrue would answer 404 for the update and "wrong password" for the check.
+    if (!UUID_RE.test(user.id) || !user.email) {
+      throw new BadRequestException("This session has no Supabase Auth account to change a password for.");
+    }
+
+    if (!(await this.supabase.verifyPassword(user.email, input.currentPassword))) {
+      // Deliberately 400, NOT 401: the frontend api client reads 401 as "this
+      // token expired", refreshes, retries the request and signs the user out if
+      // that fails — so answering 401 here would log someone out for a typo.
+      throw new BadRequestException({
+        message: "Current password is incorrect",
+        code: "CURRENT_PASSWORD_INCORRECT",
+      });
+    }
+
+    await this.supabase.updateUserById(user.id, {
+      password: input.newPassword,
+      // Cleared in the same call as the password, so the two can never disagree.
+      app_metadata: { must_change_password: false },
+    });
+    return { ok: true };
   }
 
   /**
@@ -350,6 +419,17 @@ export class ProfileController {
   })
   update(@CurrentUser() user: AuthUser, @CurrentAccess() access: UserAccess, @Body() body: unknown) {
     return this.svc.update(user, access, body);
+  }
+
+  @Post("password")
+  @ApiOperation({
+    summary: "Change your own password",
+    description:
+      "Verifies the current password, sets the new one, and clears any admin-issued forced-change flag. " +
+      "Scoped to the caller by their token.",
+  })
+  changePassword(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.svc.changePassword(user, body);
   }
 
   @Get("sign-ins")

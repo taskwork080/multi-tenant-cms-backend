@@ -248,6 +248,16 @@ export class PlatformUsersService {
     // GoTrue and Postgres cannot share a transaction. Create the auth identity
     // first (reversible via deleteUser), then let the DB transaction be the
     // commit point — see the compensation below.
+    // A password an admin chose is temporary by construction: the user is sent
+    // to /change-password and nothing else renders until they replace it, so the
+    // admin is never left holding working credentials for someone else's
+    // account. The invite path sets no password, so there is nothing to force.
+    const appMetadata = {
+      role: input.appRole,
+      tenant_id: input.tenantId,
+      must_change_password: input.mustChangePassword ?? !!input.password,
+    };
+
     let authUser: AdminAuthUser;
     let adopted = false;
     try {
@@ -255,7 +265,7 @@ export class PlatformUsersService {
         email: input.email,
         password: input.password,
         emailConfirm: !input.sendInvite,
-        appMetadata: { role: input.appRole, tenant_id: input.tenantId },
+        appMetadata,
       });
     } catch (err) {
       if (!(err instanceof ConflictException)) throw err;
@@ -267,8 +277,12 @@ export class PlatformUsersService {
       if (claimed && claimed !== input.tenantId) {
         throw new ConflictException("That email already belongs to another workspace");
       }
+      // The password has to be applied here too. createUser rejected outright,
+      // so the identity kept whatever password it already had — adopting it
+      // without this hands the admin a temporary password that does not work.
       await this.supabase.updateUserById(found.id, {
-        app_metadata: { role: input.appRole, tenant_id: input.tenantId },
+        app_metadata: appMetadata,
+        ...(input.password ? { password: input.password, email_confirm: true } : {}),
       });
       authUser = found;
       adopted = true;
@@ -448,24 +462,44 @@ export class PlatformUsersService {
     const user = await this.load(id);
     if (!user.authUserId) throw new BadRequestException("This user has no auth account yet");
 
-    if (input.mode === "set") {
-      if (!this.supabase.allowPasswordSet) {
+    if (input.mode === "temp" || input.mode === "set") {
+      // PLATFORM_ALLOW_PASSWORD_SET exists to stop an admin quietly acquiring
+      // working credentials for someone else's account. A temporary password
+      // cannot do that — it is dead as soon as the user signs in and is forced
+      // to replace it — so only the permanent mode is gated.
+      if (input.mode === "set" && !this.supabase.allowPasswordSet) {
         throw new ForbiddenException(
-          "Setting passwords directly is disabled. Enable PLATFORM_ALLOW_PASSWORD_SET to allow it.",
+          "Setting a permanent password directly is disabled. Enable PLATFORM_ALLOW_PASSWORD_SET to allow it, " +
+            "or issue a temporary password the user must change instead.",
         );
       }
-      await this.supabase.updateUserById(user.authUserId, { password: input.password });
+      await this.supabase.updateUserById(user.authUserId, {
+        password: input.password,
+        // GoTrue merges app_metadata at the top level, so this touches only the
+        // one key. Cleared with `false` rather than removed — the token reader
+        // tests `=== true`, and "set" is a deliberate permanent password.
+        app_metadata: { must_change_password: input.mode === "temp" },
+      });
       await this.recordStandalone(ctx, {
         action: "user.reset_password",
         targetType: "staff_user",
         targetId: id,
         tenantId: user.tenantId,
         // The password itself is never persisted or logged.
-        after: { mode: "set" },
+        after: { mode: input.mode },
       });
-      return { mode: "set" as const, actionLink: null };
+      return { mode: input.mode, actionLink: null };
     }
 
+    // Sending a recovery link supersedes any pending forced change: the user is
+    // about to choose their own password through /reset-password, and leaving
+    // the flag set would bounce them to /change-password immediately afterwards
+    // to enter the password they had just picked. Nothing is given away by
+    // clearing it — the admin issuing this could re-issue a temporary password
+    // at any time anyway.
+    await this.supabase.updateUserById(user.authUserId, {
+      app_metadata: { must_change_password: false },
+    });
     const { actionLink } = await this.supabase.generateLink({
       type: "recovery",
       email: user.email,

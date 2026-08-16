@@ -289,6 +289,9 @@ async function seedDefaultOwner(tdb: TenantDb, users: PlatformUsersService) {
       // lands `active`, so the account works the moment this finishes.
       sendInvite: false,
       password: SEED_PASSWORD,
+      // A fixture account whose password is printed in the console has nothing
+      // to protect; forcing a change would just break every seeded dev login.
+      mustChangePassword: false,
     },
     CLI_CTX,
   );

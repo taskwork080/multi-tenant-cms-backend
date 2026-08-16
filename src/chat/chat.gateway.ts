@@ -64,7 +64,7 @@ export class ChatGateway implements OnGatewayConnection {
       // Same double gate as AuthGuard: the flag alone is not enough, because
       // this branch hands out platform_admin to an anonymous socket.
       if (!token && process.env.NODE_ENV !== "production" && this.config.get("AUTH_DEV_BYPASS") === "true") {
-        user = { id: "dev", role: PLATFORM_ADMIN };
+        user = { id: "dev", role: PLATFORM_ADMIN, mustChangePassword: false };
       } else if (token) {
         user = await this.jwt.verify(token);
       } else {
