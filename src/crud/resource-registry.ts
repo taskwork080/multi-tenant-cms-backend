@@ -126,6 +126,20 @@ export interface ResourceDef {
    * layer to grow business logic.
    */
   reservesStock?: boolean;
+  /**
+   * Give the written row its SKUs before the transaction commits.
+   *
+   * `products` declares this. A SKU cannot exist without a product
+   * (`skus.product_id` is NOT NULL), so stock has always waited on
+   * `ensureSkusForProduct` — which used to run either from the wizard's variant
+   * step or lazily on the first movement. Both left a window where an item
+   * existed but no picker could find it, and the wizard's call needs
+   * `inventory.adjust`, which the role that receives goods does not hold.
+   *
+   * Doing it here makes "the item exists" and "the item is receivable" the same
+   * moment, for every tenant type and every role that can create one.
+   */
+  ensuresSkus?: boolean;
 }
 
 /**
@@ -154,6 +168,8 @@ export const RESOURCES: Record<string, ResourceDef> = {
       { field: "pricingTiers", table: s.productPricingTiers, fk: "productId" },
       { field: "variants", table: s.productVariants, fk: "productId" },
     ],
+    // A tracked product is receivable the moment it exists.
+    ensuresSkus: true,
   },
   orders: {
     table: s.orders,

@@ -7,6 +7,7 @@ import { assertCapabilities } from "../auth/capability.guard";
 import { activities } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import { FulfilmentService } from "../inventory/fulfilment.service";
+import { InventoryService } from "../inventory/inventory.service";
 import type { TenantDto } from "../tenant/tenant.service";
 import { AnyTable, ChildDef, RESOURCES, ResourceDef } from "./resource-registry";
 
@@ -99,6 +100,7 @@ export class CrudService {
   constructor(
     private readonly tdb: TenantDb,
     private readonly fulfilment: FulfilmentService,
+    private readonly inventory: InventoryService,
   ) {}
 
   /**
@@ -233,6 +235,8 @@ export class CrudService {
         await this.fulfilment.reserveOrder(tx, tenant.id, (row as Row).id as string);
       }
 
+      if (def.ensuresSkus) await this.ensureSkus(tx, tenant.id, row as Row);
+
       await this.writeActivity(tx, tenant.id, def, "created", row as Row, access);
       const [hydrated] = await this.hydrateMany(tx, def.children, [row as Row]);
       return hydrated;
@@ -281,10 +285,34 @@ export class CrudService {
         }
       }
 
+      // Only when the variants actually came in this body: a PATCH that touches
+      // nothing but the name has no SKU consequence, and reconciling anyway
+      // would rewrite denorm rows on every save.
+      if (def.ensuresSkus && "variants" in childInputs) {
+        await this.ensureSkus(tx, tenant.id, row as Row);
+      }
+
       await this.writeActivity(tx, tenant.id, def, "updated", row as Row, access);
       const [hydrated] = await this.hydrateMany(tx, def.children, [row as Row]);
       return hydrated;
     });
+  }
+
+  /**
+   * Give a product the SKUs its stock lives on, in the write's own transaction.
+   *
+   * Same sequence as POST /inventory/skus/generate — ensure, then resync the
+   * denormalized names on the levels — but reached without `inventory.adjust`,
+   * which is the point: an Inbound Clerk may create an item and receive it, and
+   * would otherwise create a product no picker could ever find.
+   *
+   * Untracked products are skipped: `stock_mode = 'always'` means the number is
+   * a fiction the storefront prints, and syncProductStock ignores those rows too.
+   */
+  private async ensureSkus(tx: Db, tenantId: string, row: Row) {
+    if (row.stockMode !== "tracked") return;
+    const all = await this.inventory.ensureSkusForProduct(tx, tenantId, row.id as string);
+    for (const sku of all) await this.inventory.syncSkuDenorm(tx, tenantId, sku.id);
   }
 
   /** Statuses that mean "this order will not ship", so its holds are freed. */

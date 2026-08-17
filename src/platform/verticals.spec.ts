@@ -128,6 +128,35 @@ describe("role templates", () => {
     expect(clerk.capabilities).not.toContain("inventory.adjust");
   });
 
+  it("the warehouse roles that meet unknown goods can put them on file", () => {
+    // In a warehouse an item IS an inventory record, so the item master is part
+    // of the receiving and stock-accuracy jobs — not a separate catalog role.
+    // Without this, an Inbound Clerk facing a pallet of something unlisted had
+    // no move at all: `skus/generate` needs inventory.adjust, which they lack.
+    for (const name of ["Inbound Clerk", "Stock Controller"]) {
+      const role = templatesFor("warehouse").find((t) => t.name === name)!;
+      expect(role.capabilities, name).toContain("catalog.manage");
+      expect(role.menu, name).toContain("menu:/products/new");
+    }
+  });
+
+  it("picking and packing stays read-only on the item master", () => {
+    const picker = templatesFor("warehouse").find((t) => t.name === "Picker / Packer")!;
+    expect(picker.capabilities).toContain("catalog.view");
+    expect(picker.capabilities).not.toContain("catalog.manage");
+  });
+
+  it("no commerce role is handed the item master by accident", () => {
+    // catalog.manage in a shop also means storefront copy and pricing, so it
+    // belongs to the Catalog Editor and the manager, nobody else.
+    for (const type of ["ecommerce", "marketplace"] as const) {
+      const holders = templatesFor(type)
+        .filter((t) => t.capabilities.includes("catalog.manage"))
+        .map((t) => t.name);
+      expect(holders.sort()).toEqual(["Catalog Editor", type === "ecommerce" ? "Store Manager" : "Marketplace Manager"].sort());
+    }
+  });
+
   it("every template writes at least one menu key, so no role reads as unconfigured", () => {
     for (const type of TENANT_TYPES) {
       for (const t of ROLE_TEMPLATES[type]) expect(t.menu.length).toBeGreaterThan(0);
@@ -169,6 +198,26 @@ describe("resource registry", () => {
       if (OPEN_TO_ALL_MEMBERS.has(slug)) continue;
       const writesDenied = ["create", "update", "delete"].every((op) => def.deny?.includes(op as never));
       expect(def.capabilities?.write || writesDenied, `${slug} has an ungated write`).toBeTruthy();
+    }
+  });
+
+  it("only products create SKUs on write", () => {
+    // ensureSkusForProduct resolves a product row, so the flag is meaningless —
+    // and would throw — on any other table. Pinned so a copy-paste onto a
+    // neighbouring resource fails here rather than at runtime.
+    const declaring = Object.entries(RESOURCES)
+      .filter(([, def]) => def.ensuresSkus)
+      .map(([slug]) => slug);
+    expect(declaring).toEqual(["products"]);
+    expect(RESOURCES.products.module).toBe("products");
+  });
+
+  it("every vertical that can create an item can therefore hold stock for it", () => {
+    // The SKU is written in the product's own transaction, so a workspace with
+    // `products` but no `inventory` would create SKUs it can never see.
+    for (const type of TENANT_TYPES) {
+      const preset = new Set<string>(MODULE_PRESETS[type]);
+      if (preset.has("products")) expect(preset.has("inventory"), type).toBe(true);
     }
   });
 

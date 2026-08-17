@@ -90,9 +90,13 @@ const WAREHOUSE: RoleTemplate[] = [
   manager("Warehouse Manager", "Full access to inventory, fulfilment and staff."),
   {
     name: "Inbound Clerk",
-    description: "Books goods in against a receipt. Cannot adjust or count stock.",
-    capabilities: ["catalog.view", "inventory.view", "inventory.receive"],
-    menu: ["menu:/inventory", "menu:/inventory/stock", "menu:/inventory/inbound", "menu:/inventory/movements"],
+    description: "Books goods in against a receipt, and can add an item that isn't on file yet. Cannot adjust or count stock.",
+    // catalog.manage because unknown goods turn up on the dock: in a warehouse
+    // an item IS an inventory record, so the person receiving it is the person
+    // who has to be able to create it. In a shop the same key would let them
+    // edit storefront copy, which is why only the warehouse templates hold it.
+    capabilities: ["catalog.view", "catalog.manage", "inventory.view", "inventory.receive"],
+    menu: ["menu:/inventory", "menu:/inventory/stock", "menu:/inventory/inbound", "menu:/inventory/movements", "menu:/products", "menu:/products/new"],
   },
   {
     name: "Picker / Packer",
@@ -102,9 +106,9 @@ const WAREHOUSE: RoleTemplate[] = [
   },
   {
     name: "Stock Controller",
-    description: "Owns stock accuracy: adjustments, transfers and cycle counts.",
-    capabilities: ["catalog.view", "inventory.view", "inventory.adjust", "inventory.transfer", "inventory.count", "warehouses.manage"],
-    menu: ["menu:/inventory", "menu:/inventory/stock", "menu:/inventory/transfers", "menu:/inventory/counts", "menu:/inventory/movements", "menu:/warehouses", "menu:/location"],
+    description: "Owns stock accuracy: the item master, adjustments, transfers and cycle counts.",
+    capabilities: ["catalog.view", "catalog.manage", "inventory.view", "inventory.adjust", "inventory.transfer", "inventory.count", "warehouses.manage"],
+    menu: ["menu:/inventory", "menu:/inventory/stock", "menu:/inventory/transfers", "menu:/inventory/counts", "menu:/inventory/movements", "menu:/warehouses", "menu:/location", "menu:/products", "menu:/products/new"],
   },
   VIEWER,
 ];
