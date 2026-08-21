@@ -1,4 +1,7 @@
 import { Module } from "@nestjs/common";
+import { InventoryCoreModule } from "../inventory/inventory-core.module";
+import { PublicCheckoutController } from "./public-checkout.controller";
+import { PublicCheckoutService } from "./public-checkout.service";
 import { PublicStorefrontController } from "./public-storefront.controller";
 import { StorefrontController } from "./storefront.controller";
 import { StorefrontService } from "./storefront.service";
@@ -16,8 +19,11 @@ import { StorefrontService } from "./storefront.service";
  * controllers don't get pulled forward in registration order.
  */
 @Module({
-  controllers: [StorefrontController, PublicStorefrontController],
-  providers: [StorefrontService],
+  // InventoryCoreModule, not InventoryModule: it carries no controllers, so
+  // importing it here cannot reorder route registration. See its own comment.
+  imports: [InventoryCoreModule],
+  controllers: [StorefrontController, PublicStorefrontController, PublicCheckoutController],
+  providers: [StorefrontService, PublicCheckoutService],
   exports: [StorefrontService],
 })
 export class StorefrontModule {}

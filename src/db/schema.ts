@@ -280,10 +280,57 @@ export const orders = pgTable(
     paymentStatus: text("payment_status").notNull().default("unpaid"),
     paymentMethod: text("payment_method").notNull().default("cod"),
     total: numeric("total", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+    /** Shipping area within the district. Predates the columns below. */
     area: text("area").notNull().default(""),
+
+    // --- Money, broken out ---------------------------------------------------
+    //
+    // `total` alone cannot be audited: it does not say what was charged for
+    // delivery, what a promo took off, or what the payment method added. A
+    // storefront order that stored only the total would lose the entire
+    // checkout breakdown the moment it was placed, and no admin could answer
+    // "why is this ৳12,860?".
+    //
+    // All default 0, so every order written before this migration stays valid
+    // and simply reports no delivery fee, no discount and no payment charge —
+    // which is what an admin-placed order actually had.
+    subtotal: numeric("subtotal", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+    /** List-price savings — the sum of (list − offer) across the lines. */
+    savings: numeric("savings", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+    /** Promo-code discount, on top of `savings`. */
+    discount: numeric("discount", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+    deliveryFee: numeric("delivery_fee", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+    /** Surcharge for the chosen payment method (card/MFS fees). */
+    paymentCharge: numeric("payment_charge", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+    promoCode: text("promo_code"),
+
+    // --- Where it goes -------------------------------------------------------
+    shippingName: text("shipping_name"),
+    shippingPhone: text("shipping_phone"),
+    shippingAddress: text("shipping_address"),
+    shippingDistrict: text("shipping_district"),
+    billingName: text("billing_name"),
+    billingPhone: text("billing_phone"),
+    billingAddress: text("billing_address"),
+    /** Free text from the shopper at checkout. */
+    notes: text("notes"),
+
+    /**
+     * Lets a guest read back their own order without signing in.
+     *
+     * `code` is ORD-1234 and guessable by design — it is quoted over the phone.
+     * Anyone who could guess one could otherwise read a stranger's name, phone
+     * and address, so the public lookup requires this instead. Null on orders
+     * placed in the admin, which are read through an authenticated session.
+     */
+    publicToken: text("public_token"),
     ...timestamps,
   },
-  (t) => [index("orders_tenant_idx").on(t.tenantId), uniqueIndex("orders_tenant_code").on(t.tenantId, t.code)],
+  (t) => [
+    index("orders_tenant_idx").on(t.tenantId),
+    uniqueIndex("orders_tenant_code").on(t.tenantId, t.code),
+    index("orders_public_token_idx").on(t.publicToken),
+  ],
 );
 
 export const orderItems = pgTable(
@@ -1450,6 +1497,73 @@ export const storefrontNavigation = pgTable(
     ...timestamps,
   },
   (t) => [uniqueIndex("storefront_navigation_tenant_location").on(t.tenantId, t.location)],
+);
+
+/**
+ * What the storefront charges for delivery.
+ *
+ * Child table rather than a jsonb blob on storefront_configs, following the
+ * rule above: jsonb here is reserved for tenant-authored content blocks, and
+ * list-shaped data with a known shape gets a table (see note_tags,
+ * product_tags). It also means the admin can edit a zone without rewriting a
+ * document, and a fee is a numeric the database can sum.
+ *
+ * A row with `district` null is the fallback — "everywhere else". A tenant with
+ * no rows at all charges nothing, which is the correct default for a shop that
+ * has not configured delivery.
+ */
+export const storefrontDeliveryZones = pgTable(
+  "storefront_delivery_zones",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    /** Shown at checkout, e.g. "Inside Dhaka". */
+    name: text("name").notNull(),
+    /** Matched against the shipping district. Null = the catch-all zone. */
+    district: text("district"),
+    fee: numeric("fee", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+    sort: integer("sort").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    index("storefront_delivery_zones_tenant_idx").on(t.tenantId),
+    uniqueIndex("storefront_delivery_zones_tenant_district").on(t.tenantId, t.district),
+  ],
+);
+
+/**
+ * How the storefront lets people pay, and what that costs them.
+ *
+ * `feePct` is a fraction, not a percentage: 0.025 is 2.5%. Stored at scale 4 so
+ * a rate like 1.75% survives the round trip.
+ */
+export const storefrontPaymentMethods = pgTable(
+  "storefront_payment_methods",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    /** Stable key the storefront and orders.payment_method both use. */
+    code: text("code").notNull(),
+    label: text("label").notNull(),
+    description: text("description").notNull().default(""),
+    feePct: numeric("fee_pct", { precision: 6, scale: 4, mode: "number" }).notNull().default(0),
+    /**
+     * Collection in person — no delivery fee applies. Data rather than a
+     * hard-coded `code === "pickup"` check, so a shop can add a second pickup
+     * point without a code change.
+     */
+    skipsDelivery: boolean("skips_delivery").notNull().default(false),
+    /** Whether the money is owed on delivery rather than up front. */
+    payOnDelivery: boolean("pay_on_delivery").notNull().default(false),
+    sort: integer("sort").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    index("storefront_payment_methods_tenant_idx").on(t.tenantId),
+    uniqueIndex("storefront_payment_methods_tenant_code").on(t.tenantId, t.code),
+  ],
 );
 
 // --- i18n overrides ----------------------------------------------------------------------------------------

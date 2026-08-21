@@ -1,0 +1,3920 @@
+{
+  "generatedAt": "2026-08-20T15:53:09.863Z",
+  "brands": [
+    "AMD",
+    "Anker",
+    "APC",
+    "Apple",
+    "ASUS",
+    "Canon",
+    "Cooler Master",
+    "Corsair",
+    "Crucial",
+    "DeepCool",
+    "Dell",
+    "DJI",
+    "Dyson",
+    "Epson",
+    "EZVIZ",
+    "Fitbit",
+    "GoPro",
+    "Hikvision",
+    "Hisense",
+    "HP",
+    "HPE",
+    "Intel",
+    "JBL",
+    "Kaspersky",
+    "Keychron",
+    "Kingston",
+    "Lenovo",
+    "LG",
+    "Logitech",
+    "Luminous",
+    "Microsoft",
+    "MSI",
+    "Nikon",
+    "NVIDIA",
+    "NZXT",
+    "Philips",
+    "QNAP",
+    "Razer",
+    "Reolink",
+    "Samsung",
+    "SanDisk",
+    "Secretlab",
+    "Sonos",
+    "Sony",
+    "Synology",
+    "TP-Link",
+    "Ubiquiti",
+    "UGREEN",
+    "Xiaomi",
+    "Yale"
+  ],
+  "categories": [
+    {
+      "name": "Laptop",
+      "slug": "laptop",
+      "subcategories": [
+        {
+          "name": "Gaming Laptop",
+          "slug": "gaming-laptop"
+        },
+        {
+          "name": "Business Laptop",
+          "slug": "business-laptop"
+        },
+        {
+          "name": "Ultrabook",
+          "slug": "ultrabook"
+        },
+        {
+          "name": "2-in-1 Laptop",
+          "slug": "2-in-1-laptop"
+        },
+        {
+          "name": "Chromebook",
+          "slug": "chromebook"
+        },
+        {
+          "name": "Budget Laptop",
+          "slug": "budget-laptop"
+        }
+      ]
+    },
+    {
+      "name": "Desktop",
+      "slug": "desktop",
+      "subcategories": [
+        {
+          "name": "Gaming PC",
+          "slug": "gaming-pc"
+        },
+        {
+          "name": "Brand PC",
+          "slug": "brand-pc"
+        },
+        {
+          "name": "All-in-One PC",
+          "slug": "all-in-one-pc"
+        },
+        {
+          "name": "Mini PC",
+          "slug": "mini-pc"
+        },
+        {
+          "name": "Workstation",
+          "slug": "workstation"
+        }
+      ]
+    },
+    {
+      "name": "Components",
+      "slug": "components",
+      "subcategories": [
+        {
+          "name": "Processor",
+          "slug": "processor"
+        },
+        {
+          "name": "Motherboard",
+          "slug": "motherboard"
+        },
+        {
+          "name": "Graphics Card",
+          "slug": "graphics-card"
+        },
+        {
+          "name": "RAM",
+          "slug": "ram"
+        },
+        {
+          "name": "SSD & HDD",
+          "slug": "ssd-and-hdd"
+        },
+        {
+          "name": "Power Supply",
+          "slug": "power-supply"
+        },
+        {
+          "name": "Casing",
+          "slug": "casing"
+        },
+        {
+          "name": "Cooling",
+          "slug": "cooling"
+        }
+      ]
+    },
+    {
+      "name": "Accessories",
+      "slug": "accessories",
+      "subcategories": [
+        {
+          "name": "Mouse",
+          "slug": "mouse"
+        },
+        {
+          "name": "Keyboard",
+          "slug": "keyboard"
+        },
+        {
+          "name": "Mouse Pad",
+          "slug": "mouse-pad"
+        },
+        {
+          "name": "Webcam",
+          "slug": "webcam"
+        },
+        {
+          "name": "Headphones & Earbuds",
+          "slug": "headphones-and-earbuds"
+        },
+        {
+          "name": "Power Bank",
+          "slug": "power-bank"
+        },
+        {
+          "name": "Power Strip",
+          "slug": "power-strip"
+        },
+        {
+          "name": "Pen Drive",
+          "slug": "pen-drive"
+        },
+        {
+          "name": "Memory Card",
+          "slug": "memory-card"
+        },
+        {
+          "name": "Microphone",
+          "slug": "microphone"
+        },
+        {
+          "name": "Cable & Converter",
+          "slug": "cable-and-converter"
+        },
+        {
+          "name": "Capture Card",
+          "slug": "capture-card"
+        },
+        {
+          "name": "Barcode Scanner",
+          "slug": "barcode-scanner"
+        },
+        {
+          "name": "Presenter",
+          "slug": "presenter"
+        },
+        {
+          "name": "HDD/SSD Enclosure",
+          "slug": "hdd-ssd-enclosure"
+        },
+        {
+          "name": "Gamepad",
+          "slug": "gamepad"
+        },
+        {
+          "name": "RGB Controller",
+          "slug": "rgb-controller"
+        },
+        {
+          "name": "Card Reader",
+          "slug": "card-reader"
+        }
+      ]
+    },
+    {
+      "name": "Phone & Tab",
+      "slug": "phone-and-tab",
+      "subcategories": [
+        {
+          "name": "Smartphone",
+          "slug": "smartphone"
+        },
+        {
+          "name": "Tablet",
+          "slug": "tablet"
+        },
+        {
+          "name": "Phone Case & Cover",
+          "slug": "phone-case-and-cover"
+        },
+        {
+          "name": "Screen Protector",
+          "slug": "screen-protector"
+        },
+        {
+          "name": "Charger & Cable",
+          "slug": "charger-and-cable"
+        }
+      ]
+    },
+    {
+      "name": "Monitor",
+      "slug": "monitor",
+      "subcategories": [
+        {
+          "name": "Gaming Monitor",
+          "slug": "gaming-monitor"
+        },
+        {
+          "name": "4K Monitor",
+          "slug": "4k-monitor"
+        },
+        {
+          "name": "Curved Monitor",
+          "slug": "curved-monitor"
+        },
+        {
+          "name": "Office Monitor",
+          "slug": "office-monitor"
+        },
+        {
+          "name": "Portable Monitor",
+          "slug": "portable-monitor"
+        }
+      ]
+    },
+    {
+      "name": "Networking",
+      "slug": "networking",
+      "subcategories": [
+        {
+          "name": "Router",
+          "slug": "router"
+        },
+        {
+          "name": "Switch",
+          "slug": "switch"
+        },
+        {
+          "name": "Access Point",
+          "slug": "access-point"
+        },
+        {
+          "name": "Range Extender",
+          "slug": "range-extender"
+        },
+        {
+          "name": "Network Card",
+          "slug": "network-card"
+        }
+      ]
+    },
+    {
+      "name": "Office Equipment",
+      "slug": "office-equipment",
+      "subcategories": [
+        {
+          "name": "Printer",
+          "slug": "printer"
+        },
+        {
+          "name": "Scanner",
+          "slug": "scanner"
+        },
+        {
+          "name": "Projector",
+          "slug": "projector"
+        },
+        {
+          "name": "Laminator",
+          "slug": "laminator"
+        },
+        {
+          "name": "Shredder",
+          "slug": "shredder"
+        }
+      ]
+    },
+    {
+      "name": "Gadgets",
+      "slug": "gadgets",
+      "subcategories": [
+        {
+          "name": "Smartwatch",
+          "slug": "smartwatch"
+        },
+        {
+          "name": "Earbuds",
+          "slug": "earbuds"
+        },
+        {
+          "name": "Action Camera",
+          "slug": "action-camera"
+        },
+        {
+          "name": "Drone",
+          "slug": "drone"
+        },
+        {
+          "name": "VR Headset",
+          "slug": "vr-headset"
+        }
+      ]
+    },
+    {
+      "name": "Cameras",
+      "slug": "cameras",
+      "subcategories": [
+        {
+          "name": "DSLR",
+          "slug": "dslr"
+        },
+        {
+          "name": "Mirrorless",
+          "slug": "mirrorless"
+        },
+        {
+          "name": "Action Cam",
+          "slug": "action-cam"
+        },
+        {
+          "name": "CCTV Camera",
+          "slug": "cctv-camera"
+        },
+        {
+          "name": "Camera Lens",
+          "slug": "camera-lens"
+        }
+      ]
+    },
+    {
+      "name": "TV & Sound",
+      "slug": "tv-and-sound",
+      "subcategories": [
+        {
+          "name": "Television",
+          "slug": "television"
+        },
+        {
+          "name": "Soundbar",
+          "slug": "soundbar"
+        },
+        {
+          "name": "Home Theater",
+          "slug": "home-theater"
+        },
+        {
+          "name": "Bluetooth Speaker",
+          "slug": "bluetooth-speaker"
+        },
+        {
+          "name": "Headphone",
+          "slug": "headphone"
+        }
+      ]
+    },
+    {
+      "name": "Power",
+      "slug": "power",
+      "subcategories": [
+        {
+          "name": "UPS",
+          "slug": "ups"
+        },
+        {
+          "name": "IPS",
+          "slug": "ips"
+        },
+        {
+          "name": "Voltage Stabilizer",
+          "slug": "voltage-stabilizer"
+        },
+        {
+          "name": "Power Strip",
+          "slug": "power-strip"
+        },
+        {
+          "name": "Solar Panel",
+          "slug": "solar-panel"
+        }
+      ]
+    },
+    {
+      "name": "Security",
+      "slug": "security",
+      "subcategories": [
+        {
+          "name": "CCTV Camera",
+          "slug": "cctv-camera"
+        },
+        {
+          "name": "DVR/NVR",
+          "slug": "dvr-nvr"
+        },
+        {
+          "name": "Access Control",
+          "slug": "access-control"
+        },
+        {
+          "name": "Door Lock",
+          "slug": "door-lock"
+        },
+        {
+          "name": "Alarm System",
+          "slug": "alarm-system"
+        }
+      ]
+    },
+    {
+      "name": "Gaming",
+      "slug": "gaming",
+      "subcategories": [
+        {
+          "name": "Console",
+          "slug": "console"
+        },
+        {
+          "name": "Controller",
+          "slug": "controller"
+        },
+        {
+          "name": "Gaming Chair",
+          "slug": "gaming-chair"
+        },
+        {
+          "name": "Gaming Desk",
+          "slug": "gaming-desk"
+        },
+        {
+          "name": "VR Headset",
+          "slug": "vr-headset"
+        }
+      ]
+    },
+    {
+      "name": "Appliance",
+      "slug": "appliance",
+      "subcategories": [
+        {
+          "name": "Fan",
+          "slug": "fan"
+        },
+        {
+          "name": "Air Purifier",
+          "slug": "air-purifier"
+        },
+        {
+          "name": "Air Conditioner",
+          "slug": "air-conditioner"
+        },
+        {
+          "name": "Refrigerator",
+          "slug": "refrigerator"
+        },
+        {
+          "name": "Iron",
+          "slug": "iron"
+        }
+      ]
+    },
+    {
+      "name": "Software",
+      "slug": "software",
+      "subcategories": [
+        {
+          "name": "Operating System",
+          "slug": "operating-system"
+        },
+        {
+          "name": "Office Suite",
+          "slug": "office-suite"
+        },
+        {
+          "name": "Antivirus",
+          "slug": "antivirus"
+        },
+        {
+          "name": "Design Software",
+          "slug": "design-software"
+        },
+        {
+          "name": "Utility Tool",
+          "slug": "utility-tool"
+        }
+      ]
+    },
+    {
+      "name": "Servers",
+      "slug": "servers",
+      "subcategories": [
+        {
+          "name": "Rack Server",
+          "slug": "rack-server"
+        },
+        {
+          "name": "Tower Server",
+          "slug": "tower-server"
+        },
+        {
+          "name": "Workstation",
+          "slug": "workstation"
+        },
+        {
+          "name": "Storage (NAS)",
+          "slug": "storage-nas"
+        },
+        {
+          "name": "Server RAM",
+          "slug": "server-ram"
+        }
+      ]
+    },
+    {
+      "name": "Smart Home",
+      "slug": "smart-home",
+      "subcategories": [
+        {
+          "name": "Smart Bulb",
+          "slug": "smart-bulb"
+        },
+        {
+          "name": "Smart Plug",
+          "slug": "smart-plug"
+        },
+        {
+          "name": "Smart Camera",
+          "slug": "smart-camera"
+        },
+        {
+          "name": "Smart Lock",
+          "slug": "smart-lock"
+        },
+        {
+          "name": "Sensor",
+          "slug": "sensor"
+        }
+      ]
+    }
+  ],
+  "products": [
+    {
+      "slug": "zen14",
+      "name": "ASUS Zenbook 14 OLED UX3405 Core Ultra 7",
+      "brand": "ASUS",
+      "categorySlug": "laptop",
+      "subCategorySlug": null,
+      "listPrice": 178000,
+      "offerPrice": 165000,
+      "imageUrl": "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Processor",
+          "value": "Intel Core Ultra 7 155H"
+        },
+        {
+          "label": "Display",
+          "value": "14\" 3K OLED 120Hz"
+        },
+        {
+          "label": "RAM",
+          "value": "16GB LPDDR5X"
+        },
+        {
+          "label": "Storage",
+          "value": "1TB PCIe 4.0 NVMe SSD"
+        },
+        {
+          "label": "Weight",
+          "value": "1.2 kg"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years International"
+        }
+      ],
+      "badges": [
+        "Hot",
+        "Best Seller"
+      ]
+    },
+    {
+      "slug": "mba",
+      "name": "Apple MacBook Air 13\" M4 Chip 16/256GB",
+      "brand": "Apple",
+      "categorySlug": "laptop",
+      "subCategorySlug": null,
+      "listPrice": 145000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Chip",
+          "value": "Apple M4, 10-core GPU"
+        },
+        {
+          "label": "Display",
+          "value": "13.6\" Liquid Retina"
+        },
+        {
+          "label": "RAM",
+          "value": "16GB Unified Memory"
+        },
+        {
+          "label": "Storage",
+          "value": "256GB SSD"
+        },
+        {
+          "label": "Battery",
+          "value": "Up to 18 hours"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Apple Care"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "loq",
+      "name": "Lenovo LOQ 15IRX9 i7 13650HX RTX 4060",
+      "brand": "Lenovo",
+      "categorySlug": "laptop",
+      "subCategorySlug": null,
+      "listPrice": 142000,
+      "offerPrice": 132500,
+      "imageUrl": "https://images.unsplash.com/photo-1593642702821-c8da6771f0c6?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Processor",
+          "value": "Intel Core i7-13650HX"
+        },
+        {
+          "label": "Graphics",
+          "value": "NVIDIA RTX 4060 8GB"
+        },
+        {
+          "label": "Display",
+          "value": "15.6\" FHD 144Hz"
+        },
+        {
+          "label": "RAM",
+          "value": "16GB DDR5"
+        },
+        {
+          "label": "Storage",
+          "value": "512GB NVMe SSD"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "pav",
+      "name": "HP Pavilion 15 Ryzen 5 8540U 16GB",
+      "brand": "HP",
+      "categorySlug": "laptop",
+      "subCategorySlug": null,
+      "listPrice": 98500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1484704849700-f032a568e944?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Processor",
+          "value": "AMD Ryzen 5 8540U"
+        },
+        {
+          "label": "Display",
+          "value": "15.6\" FHD IPS"
+        },
+        {
+          "label": "RAM",
+          "value": "16GB DDR4"
+        },
+        {
+          "label": "Storage",
+          "value": "512GB NVMe SSD"
+        },
+        {
+          "label": "OS",
+          "value": "Windows 11 Home"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "x3d",
+      "name": "AMD Ryzen 7 9800X3D Gaming Processor",
+      "brand": "AMD",
+      "categorySlug": "components",
+      "subCategorySlug": "processor",
+      "listPrice": 62500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Cores / Threads",
+          "value": "8 / 16"
+        },
+        {
+          "label": "Boost Clock",
+          "value": "Up to 5.2 GHz"
+        },
+        {
+          "label": "Cache",
+          "value": "96MB 3D V-Cache"
+        },
+        {
+          "label": "Socket",
+          "value": "AM5"
+        },
+        {
+          "label": "TDP",
+          "value": "120W"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": [
+        "Hot",
+        "Best Seller"
+      ]
+    },
+    {
+      "slug": "rtx5070",
+      "name": "MSI GeForce RTX 5070 12G VENTUS 3X OC",
+      "brand": "MSI",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 92000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "GPU",
+          "value": "NVIDIA GeForce RTX 5070"
+        },
+        {
+          "label": "Memory",
+          "value": "12GB GDDR7"
+        },
+        {
+          "label": "Boost Clock",
+          "value": "2542 MHz"
+        },
+        {
+          "label": "Features",
+          "value": "DLSS 4 · Ray Tracing"
+        },
+        {
+          "label": "Power",
+          "value": "650W PSU recommended"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "ssd990",
+      "name": "Samsung 990 PRO 2TB PCIe 4.0 NVMe SSD",
+      "brand": "Samsung",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 32000,
+      "offerPrice": 28500,
+      "imageUrl": "https://images.unsplash.com/photo-1498049794561-7780e7231661?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Capacity",
+          "value": "2TB"
+        },
+        {
+          "label": "Interface",
+          "value": "PCIe 4.0 x4 NVMe 2.0"
+        },
+        {
+          "label": "Read Speed",
+          "value": "Up to 7,450 MB/s"
+        },
+        {
+          "label": "Write Speed",
+          "value": "Up to 6,900 MB/s"
+        },
+        {
+          "label": "Endurance",
+          "value": "1,200 TBW"
+        },
+        {
+          "label": "Warranty",
+          "value": "5 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "veng",
+      "name": "Corsair Vengeance RGB 32GB (2x16) DDR5 6000MHz",
+      "brand": "Corsair",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 14200,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1612869538502-b5baa439abd7?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Capacity",
+          "value": "32GB (2 x 16GB)"
+        },
+        {
+          "label": "Type",
+          "value": "DDR5"
+        },
+        {
+          "label": "Speed",
+          "value": "6000 MT/s CL30"
+        },
+        {
+          "label": "Lighting",
+          "value": "Dynamic RGB"
+        },
+        {
+          "label": "Profile",
+          "value": "AMD EXPO / Intel XMP"
+        },
+        {
+          "label": "Warranty",
+          "value": "Lifetime"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "lg27",
+      "name": "LG UltraGear 27GS75Q 27\" QHD 180Hz Gaming Monitor",
+      "brand": "LG",
+      "categorySlug": "monitor",
+      "subCategorySlug": "gaming-monitor",
+      "listPrice": 42000,
+      "offerPrice": 38500,
+      "imageUrl": "https://images.unsplash.com/photo-1616588589676-62b3bd4ff6d2?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Size",
+          "value": "27\" IPS"
+        },
+        {
+          "label": "Resolution",
+          "value": "2560 x 1440 QHD"
+        },
+        {
+          "label": "Refresh Rate",
+          "value": "180Hz, 1ms GtG"
+        },
+        {
+          "label": "HDR",
+          "value": "HDR10"
+        },
+        {
+          "label": "Sync",
+          "value": "G-SYNC Compatible"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "s7view",
+      "name": "Samsung ViewFinity S7 32\" 4K UHD Monitor",
+      "brand": "Samsung",
+      "categorySlug": "monitor",
+      "subCategorySlug": null,
+      "listPrice": 52000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Size",
+          "value": "32\" VA"
+        },
+        {
+          "label": "Resolution",
+          "value": "3840 x 2160 4K UHD"
+        },
+        {
+          "label": "Color",
+          "value": "1 Billion colors, HDR10"
+        },
+        {
+          "label": "Ports",
+          "value": "HDMI 2.0 · DP 1.2"
+        },
+        {
+          "label": "Ergonomics",
+          "value": "HAS + Tilt"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "s25",
+      "name": "Samsung Galaxy S25 12/256GB",
+      "brand": "Samsung",
+      "categorySlug": "phone-and-tab",
+      "subCategorySlug": null,
+      "listPrice": 110000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Chipset",
+          "value": "Snapdragon 8 Elite"
+        },
+        {
+          "label": "Display",
+          "value": "6.2\" Dynamic AMOLED 120Hz"
+        },
+        {
+          "label": "Camera",
+          "value": "50MP Triple"
+        },
+        {
+          "label": "RAM / Storage",
+          "value": "12GB / 256GB"
+        },
+        {
+          "label": "Battery",
+          "value": "4000mAh, 25W"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Official"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "ipad11",
+      "name": "Apple iPad 11th Gen Wi-Fi 128GB",
+      "brand": "Apple",
+      "categorySlug": "phone-and-tab",
+      "subCategorySlug": null,
+      "listPrice": 48500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Chip",
+          "value": "Apple A16 Bionic"
+        },
+        {
+          "label": "Display",
+          "value": "11\" Liquid Retina"
+        },
+        {
+          "label": "Storage",
+          "value": "128GB"
+        },
+        {
+          "label": "Camera",
+          "value": "12MP Wide"
+        },
+        {
+          "label": "Battery",
+          "value": "Up to 10 hours"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Apple Care"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "rn14",
+      "name": "Xiaomi Redmi Note 14 Pro 8/256GB",
+      "brand": "Xiaomi",
+      "categorySlug": "phone-and-tab",
+      "subCategorySlug": null,
+      "listPrice": 34500,
+      "offerPrice": 31999,
+      "imageUrl": "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Chipset",
+          "value": "MediaTek Dimensity 7300"
+        },
+        {
+          "label": "Display",
+          "value": "6.67\" AMOLED 120Hz"
+        },
+        {
+          "label": "Camera",
+          "value": "200MP OIS Triple"
+        },
+        {
+          "label": "RAM / Storage",
+          "value": "8GB / 256GB"
+        },
+        {
+          "label": "Battery",
+          "value": "5500mAh, 45W"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Official"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "ps5",
+      "name": "Sony PlayStation 5 Slim Disc Edition",
+      "brand": "Sony",
+      "categorySlug": "gaming",
+      "subCategorySlug": "controller",
+      "listPrice": 68500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1606813907291-d86efa9b94db?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "CPU / GPU",
+          "value": "AMD Zen 2 / RDNA 2 10.3 TF"
+        },
+        {
+          "label": "Storage",
+          "value": "1TB Custom SSD"
+        },
+        {
+          "label": "Resolution",
+          "value": "Up to 8K, 120fps"
+        },
+        {
+          "label": "Drive",
+          "value": "4K UHD Blu-ray"
+        },
+        {
+          "label": "Controller",
+          "value": "DualSense included"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": [
+        "Hot",
+        "Best Seller"
+      ]
+    },
+    {
+      "slug": "g502",
+      "name": "Logitech G502 X Wired Gaming Mouse",
+      "brand": "Logitech",
+      "categorySlug": "gaming",
+      "subCategorySlug": null,
+      "listPrice": 7900,
+      "offerPrice": 6800,
+      "imageUrl": "https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Sensor",
+          "value": "HERO 25K"
+        },
+        {
+          "label": "DPI",
+          "value": "100 – 25,600"
+        },
+        {
+          "label": "Switches",
+          "value": "LIGHTFORCE Hybrid"
+        },
+        {
+          "label": "Buttons",
+          "value": "13 programmable"
+        },
+        {
+          "label": "Weight",
+          "value": "89g"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": [
+        "Best Seller"
+      ]
+    },
+    {
+      "slug": "bw4",
+      "name": "Razer BlackWidow V4 X Mechanical Keyboard",
+      "brand": "Razer",
+      "categorySlug": "gaming",
+      "subCategorySlug": null,
+      "listPrice": 16500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1541140532154-b024d705b90a?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Switches",
+          "value": "Razer Green Mechanical"
+        },
+        {
+          "label": "Lighting",
+          "value": "Razer Chroma RGB"
+        },
+        {
+          "label": "Layout",
+          "value": "Full-size, 6 macro keys"
+        },
+        {
+          "label": "Durability",
+          "value": "80M keystrokes"
+        },
+        {
+          "label": "Connection",
+          "value": "USB-C wired"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "ax73",
+      "name": "TP-Link Archer AX73 AX5400 Wi-Fi 6 Router",
+      "brand": "TP-Link",
+      "categorySlug": "networking",
+      "subCategorySlug": "router",
+      "listPrice": 14500,
+      "offerPrice": 12800,
+      "imageUrl": "https://images.unsplash.com/photo-1606904825846-647eb07f5be2?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Standard",
+          "value": "Wi-Fi 6 (802.11ax)"
+        },
+        {
+          "label": "Speed",
+          "value": "5400 Mbps dual-band"
+        },
+        {
+          "label": "Antennas",
+          "value": "6 high-gain"
+        },
+        {
+          "label": "Coverage",
+          "value": "Up to 200 devices"
+        },
+        {
+          "label": "Ports",
+          "value": "1G WAN + 4x 1G LAN"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": [
+        "Best Seller"
+      ]
+    },
+    {
+      "slug": "anker737",
+      "name": "Anker 737 Power Bank 24,000mAh 140W",
+      "brand": "Anker",
+      "categorySlug": "accessories",
+      "subCategorySlug": "power-bank",
+      "listPrice": 12500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1593305841991-05c297ba4575?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Capacity",
+          "value": "24,000mAh"
+        },
+        {
+          "label": "Output",
+          "value": "140W max (USB-C PD 3.1)"
+        },
+        {
+          "label": "Ports",
+          "value": "2x USB-C + 1x USB-A"
+        },
+        {
+          "label": "Display",
+          "value": "Smart digital display"
+        },
+        {
+          "label": "Recharge",
+          "value": "58 min full charge"
+        },
+        {
+          "label": "Warranty",
+          "value": "18 Months"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "k8pro",
+      "name": "Keychron K8 Pro QMK/VIA Wireless Keyboard",
+      "brand": "Keychron",
+      "categorySlug": "accessories",
+      "subCategorySlug": "keyboard",
+      "listPrice": 11200,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1618384887929-16ec33fab9ef?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Layout",
+          "value": "Tenkeyless 87-key"
+        },
+        {
+          "label": "Switches",
+          "value": "Gateron G Pro, hot-swap"
+        },
+        {
+          "label": "Connection",
+          "value": "Bluetooth 5.1 / USB-C"
+        },
+        {
+          "label": "Firmware",
+          "value": "QMK / VIA"
+        },
+        {
+          "label": "Battery",
+          "value": "4000mAh"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "apc650",
+      "name": "APC BX650 650VA Backup UPS",
+      "brand": "APC",
+      "categorySlug": "power",
+      "subCategorySlug": "ups",
+      "listPrice": 6850,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1593305841991-05c297ba4575?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Capacity",
+          "value": "650VA / 325W"
+        },
+        {
+          "label": "Outlets",
+          "value": "4x universal"
+        },
+        {
+          "label": "Backup",
+          "value": "15–25 min typical"
+        },
+        {
+          "label": "Protection",
+          "value": "Surge + battery backup"
+        },
+        {
+          "label": "Battery",
+          "value": "Sealed lead-acid"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "r50",
+      "name": "Canon EOS R50 Mirrorless with 18-45mm Kit",
+      "brand": "Canon",
+      "categorySlug": "cameras",
+      "subCategorySlug": "mirrorless",
+      "listPrice": 92500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Sensor",
+          "value": "24.2MP APS-C CMOS"
+        },
+        {
+          "label": "Video",
+          "value": "4K 30p uncropped"
+        },
+        {
+          "label": "AF",
+          "value": "Dual Pixel CMOS AF II"
+        },
+        {
+          "label": "Burst",
+          "value": "Up to 15 fps"
+        },
+        {
+          "label": "Screen",
+          "value": "Vari-angle touch"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Official"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "xm6",
+      "name": "Sony WH-1000XM6 Wireless Noise Canceling Headphones",
+      "brand": "Sony",
+      "categorySlug": "tv-and-sound",
+      "subCategorySlug": "headphone",
+      "listPrice": 42000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Driver",
+          "value": "30mm carbon dome"
+        },
+        {
+          "label": "ANC",
+          "value": "QN3 HD processor"
+        },
+        {
+          "label": "Battery",
+          "value": "30h with ANC"
+        },
+        {
+          "label": "Codec",
+          "value": "LDAC · AAC · SBC"
+        },
+        {
+          "label": "Charging",
+          "value": "USB-C quick charge"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "u7k",
+      "name": "Hisense 55\" U7K Mini-LED 4K Google TV",
+      "brand": "Hisense",
+      "categorySlug": "tv-and-sound",
+      "subCategorySlug": null,
+      "listPrice": 78000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Size",
+          "value": "55\" Mini-LED"
+        },
+        {
+          "label": "Resolution",
+          "value": "4K UHD, 144Hz"
+        },
+        {
+          "label": "HDR",
+          "value": "Dolby Vision IQ · HDR10+"
+        },
+        {
+          "label": "OS",
+          "value": "Google TV"
+        },
+        {
+          "label": "Audio",
+          "value": "2.1ch Dolby Atmos"
+        },
+        {
+          "label": "Warranty",
+          "value": "4 Years Panel"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "hikkit",
+      "name": "Hikvision 4-Channel 2MP Full CCTV Package",
+      "brand": "Hikvision",
+      "categorySlug": "security",
+      "subCategorySlug": null,
+      "listPrice": 24500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1558002038-1055907df827?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Cameras",
+          "value": "4x 2MP dome/bullet"
+        },
+        {
+          "label": "DVR",
+          "value": "4-channel H.265+"
+        },
+        {
+          "label": "Storage",
+          "value": "1TB surveillance HDD"
+        },
+        {
+          "label": "Night Vision",
+          "value": "Up to 20m IR"
+        },
+        {
+          "label": "Includes",
+          "value": "Cables + installation kit"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "rog-g16",
+      "name": "ASUS ROG Strix G16 i9 14900HX RTX 4070",
+      "brand": "ASUS",
+      "categorySlug": "laptop",
+      "subCategorySlug": null,
+      "listPrice": 249000,
+      "offerPrice": 235000,
+      "imageUrl": "https://images.unsplash.com/photo-1593642702821-c8da6771f0c6?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Processor",
+          "value": "Intel Core i9-14900HX"
+        },
+        {
+          "label": "Graphics",
+          "value": "NVIDIA RTX 4070 8GB"
+        },
+        {
+          "label": "Display",
+          "value": "16\" QHD+ 240Hz"
+        },
+        {
+          "label": "RAM",
+          "value": "32GB DDR5"
+        },
+        {
+          "label": "Storage",
+          "value": "1TB PCIe 4.0 SSD"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": [
+        "Hot"
+      ]
+    },
+    {
+      "slug": "dell-xps",
+      "name": "Dell XPS 13 9340 Core Ultra 7 16/512GB",
+      "brand": "Dell",
+      "categorySlug": "laptop",
+      "subCategorySlug": null,
+      "listPrice": 172000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1526738549149-8e07eca6c147?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Processor",
+          "value": "Intel Core Ultra 7 155H"
+        },
+        {
+          "label": "Display",
+          "value": "13.4\" FHD+ InfinityEdge"
+        },
+        {
+          "label": "RAM",
+          "value": "16GB LPDDR5X"
+        },
+        {
+          "label": "Storage",
+          "value": "512GB NVMe SSD"
+        },
+        {
+          "label": "Weight",
+          "value": "1.19 kg"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "rog-g22",
+      "name": "ASUS ROG G22CH Gaming Desktop i7 RTX 4070",
+      "brand": "ASUS",
+      "categorySlug": "desktop",
+      "subCategorySlug": null,
+      "listPrice": 199000,
+      "offerPrice": 185000,
+      "imageUrl": "https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Processor",
+          "value": "Intel Core i7-14700"
+        },
+        {
+          "label": "Graphics",
+          "value": "NVIDIA RTX 4070 12GB"
+        },
+        {
+          "label": "RAM",
+          "value": "32GB DDR5"
+        },
+        {
+          "label": "Storage",
+          "value": "1TB NVMe SSD"
+        },
+        {
+          "label": "Form Factor",
+          "value": "11L Compact"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": [
+        "Hot"
+      ]
+    },
+    {
+      "slug": "imac24",
+      "name": "Apple iMac 24\" M4 8-Core 16/256GB",
+      "brand": "Apple",
+      "categorySlug": "desktop",
+      "subCategorySlug": null,
+      "listPrice": 175000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Chip",
+          "value": "Apple M4, 10-core GPU"
+        },
+        {
+          "label": "Display",
+          "value": "24\" 4.5K Retina"
+        },
+        {
+          "label": "RAM",
+          "value": "16GB Unified Memory"
+        },
+        {
+          "label": "Storage",
+          "value": "256GB SSD"
+        },
+        {
+          "label": "Ports",
+          "value": "2x Thunderbolt / USB 4"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Apple Care"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "mac-mini",
+      "name": "Apple Mac mini M4 16/256GB",
+      "brand": "Apple",
+      "categorySlug": "desktop",
+      "subCategorySlug": null,
+      "listPrice": 78000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Chip",
+          "value": "Apple M4"
+        },
+        {
+          "label": "RAM",
+          "value": "16GB Unified Memory"
+        },
+        {
+          "label": "Storage",
+          "value": "256GB SSD"
+        },
+        {
+          "label": "Ports",
+          "value": "Thunderbolt 4 · HDMI · USB-C"
+        },
+        {
+          "label": "Size",
+          "value": "5 x 5 inch desktop"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Apple Care"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "hp-aio",
+      "name": "HP All-in-One 27 Ryzen 7 16/512GB 27\" FHD",
+      "brand": "HP",
+      "categorySlug": "desktop",
+      "subCategorySlug": null,
+      "listPrice": 132000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Processor",
+          "value": "AMD Ryzen 7 8700G"
+        },
+        {
+          "label": "Display",
+          "value": "27\" FHD IPS"
+        },
+        {
+          "label": "RAM",
+          "value": "16GB DDR5"
+        },
+        {
+          "label": "Storage",
+          "value": "512GB NVMe SSD"
+        },
+        {
+          "label": "Extras",
+          "value": "Pop-up webcam · Wireless KB"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "rtx5080",
+      "name": "MSI GeForce RTX 5080 16G Gaming Trio OC",
+      "brand": "MSI",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 165000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "GPU",
+          "value": "NVIDIA GeForce RTX 5080"
+        },
+        {
+          "label": "Memory",
+          "value": "16GB GDDR7"
+        },
+        {
+          "label": "Boost Clock",
+          "value": "2730 MHz"
+        },
+        {
+          "label": "Features",
+          "value": "DLSS 4 · Ray Tracing"
+        },
+        {
+          "label": "Power",
+          "value": "850W PSU recommended"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "i9-14900k",
+      "name": "Intel Core i9-14900K Desktop Processor",
+      "brand": "Intel",
+      "categorySlug": "components",
+      "subCategorySlug": "processor",
+      "listPrice": 68500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Cores / Threads",
+          "value": "24 (8P+16E) / 32"
+        },
+        {
+          "label": "Boost Clock",
+          "value": "Up to 6.0 GHz"
+        },
+        {
+          "label": "Cache",
+          "value": "36MB Intel Smart Cache"
+        },
+        {
+          "label": "Socket",
+          "value": "LGA 1700"
+        },
+        {
+          "label": "TDP",
+          "value": "125W base"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "b650-mb",
+      "name": "ASUS ROG STRIX B650-A Gaming WiFi Motherboard",
+      "brand": "ASUS",
+      "categorySlug": "components",
+      "subCategorySlug": "motherboard",
+      "listPrice": 32500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1612869538502-b5baa439abd7?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Socket",
+          "value": "AMD AM5"
+        },
+        {
+          "label": "Memory",
+          "value": "4x DDR5, up to 128GB"
+        },
+        {
+          "label": "Networking",
+          "value": "Wi-Fi 6E · 2.5G LAN"
+        },
+        {
+          "label": "Storage",
+          "value": "3x M.2 slots"
+        },
+        {
+          "label": "Form Factor",
+          "value": "ATX"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "nzxt-h5",
+      "name": "NZXT H5 Flow Mid-Tower ATX Case",
+      "brand": "NZXT",
+      "categorySlug": "components",
+      "subCategorySlug": "cooling",
+      "listPrice": 13800,
+      "offerPrice": 12500,
+      "imageUrl": "https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Type",
+          "value": "Mid-Tower ATX"
+        },
+        {
+          "label": "Fans",
+          "value": "2x 120mm included"
+        },
+        {
+          "label": "Clearance",
+          "value": "GPU up to 365mm"
+        },
+        {
+          "label": "Cooling",
+          "value": "Up to 280mm radiator"
+        },
+        {
+          "label": "Panel",
+          "value": "Tempered glass"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "cpu-r5-7600",
+      "name": "AMD Ryzen 5 7600 Processor",
+      "brand": "AMD",
+      "categorySlug": "components",
+      "subCategorySlug": "processor",
+      "listPrice": 24000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Cores / Threads",
+          "value": "6 / 12"
+        },
+        {
+          "label": "Boost Clock",
+          "value": "Up to 5.1 GHz"
+        },
+        {
+          "label": "Cache",
+          "value": "38MB"
+        },
+        {
+          "label": "Socket",
+          "value": "AM5"
+        },
+        {
+          "label": "TDP",
+          "value": "65W"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "cpu-i5-14600k",
+      "name": "Intel Core i5-14600K Desktop Processor",
+      "brand": "Intel",
+      "categorySlug": "components",
+      "subCategorySlug": "processor",
+      "listPrice": 33500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Cores / Threads",
+          "value": "14 (6P+8E) / 20"
+        },
+        {
+          "label": "Boost Clock",
+          "value": "Up to 5.3 GHz"
+        },
+        {
+          "label": "Cache",
+          "value": "24MB Intel Smart Cache"
+        },
+        {
+          "label": "Socket",
+          "value": "LGA 1700"
+        },
+        {
+          "label": "TDP",
+          "value": "125W base"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "mobo-z790",
+      "name": "MSI PRO Z790-P WiFi DDR5 Motherboard",
+      "brand": "MSI",
+      "categorySlug": "components",
+      "subCategorySlug": "motherboard",
+      "listPrice": 28000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Socket",
+          "value": "Intel LGA 1700"
+        },
+        {
+          "label": "Memory",
+          "value": "4x DDR5, up to 192GB"
+        },
+        {
+          "label": "Networking",
+          "value": "Wi-Fi 6E · 2.5G LAN"
+        },
+        {
+          "label": "Storage",
+          "value": "4x M.2 slots"
+        },
+        {
+          "label": "Form Factor",
+          "value": "ATX"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "gpu-rtx5060",
+      "name": "MSI GeForce RTX 5060 8G VENTUS 2X OC",
+      "brand": "MSI",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 45000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "GPU",
+          "value": "NVIDIA GeForce RTX 5060"
+        },
+        {
+          "label": "Memory",
+          "value": "8GB GDDR7"
+        },
+        {
+          "label": "Boost Clock",
+          "value": "2497 MHz"
+        },
+        {
+          "label": "Features",
+          "value": "DLSS 4 · Ray Tracing"
+        },
+        {
+          "label": "Power",
+          "value": "550W PSU recommended"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "ram-fury16",
+      "name": "Kingston Fury Beast 16GB (2x8) DDR5 5600MHz",
+      "brand": "Kingston",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 7500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Capacity",
+          "value": "16GB (2 x 8GB)"
+        },
+        {
+          "label": "Type",
+          "value": "DDR5"
+        },
+        {
+          "label": "Speed",
+          "value": "5600 MT/s CL36"
+        },
+        {
+          "label": "Lighting",
+          "value": "Non-RGB"
+        },
+        {
+          "label": "Profile",
+          "value": "Intel XMP 3.0 / AMD EXPO"
+        },
+        {
+          "label": "Warranty",
+          "value": "Lifetime"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "ram-fury64",
+      "name": "Kingston Fury Beast 64GB (2x32) DDR5 6000MHz",
+      "brand": "Kingston",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 26000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Capacity",
+          "value": "64GB (2 x 32GB)"
+        },
+        {
+          "label": "Type",
+          "value": "DDR5"
+        },
+        {
+          "label": "Speed",
+          "value": "6000 MT/s CL36"
+        },
+        {
+          "label": "Lighting",
+          "value": "Non-RGB"
+        },
+        {
+          "label": "Profile",
+          "value": "Intel XMP 3.0 / AMD EXPO"
+        },
+        {
+          "label": "Warranty",
+          "value": "Lifetime"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "ssd-p3-1tb",
+      "name": "Crucial P3 Plus 1TB PCIe 4.0 NVMe SSD",
+      "brand": "Crucial",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 9500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Capacity",
+          "value": "1TB"
+        },
+        {
+          "label": "Interface",
+          "value": "PCIe 4.0 x4 NVMe"
+        },
+        {
+          "label": "Read Speed",
+          "value": "Up to 5,000 MB/s"
+        },
+        {
+          "label": "Write Speed",
+          "value": "Up to 4,200 MB/s"
+        },
+        {
+          "label": "Endurance",
+          "value": "220 TBW"
+        },
+        {
+          "label": "Warranty",
+          "value": "5 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "psu-rm750",
+      "name": "Corsair RM750e 750W 80+ Gold Fully Modular PSU",
+      "brand": "Corsair",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 11500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Wattage",
+          "value": "750W"
+        },
+        {
+          "label": "Efficiency",
+          "value": "80+ Gold"
+        },
+        {
+          "label": "Modular",
+          "value": "Fully Modular"
+        },
+        {
+          "label": "Connectors",
+          "value": "PCIe 5.0 12VHPWR"
+        },
+        {
+          "label": "Fan",
+          "value": "120mm low-noise"
+        },
+        {
+          "label": "Warranty",
+          "value": "7 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "psu-mwe650",
+      "name": "Cooler Master MWE 650 V2 650W 80+ Bronze PSU",
+      "brand": "Cooler Master",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 7200,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Wattage",
+          "value": "650W"
+        },
+        {
+          "label": "Efficiency",
+          "value": "80+ Bronze"
+        },
+        {
+          "label": "Modular",
+          "value": "Non-Modular"
+        },
+        {
+          "label": "Connectors",
+          "value": "2x PCIe 8-pin"
+        },
+        {
+          "label": "Fan",
+          "value": "120mm HDB"
+        },
+        {
+          "label": "Warranty",
+          "value": "5 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "psu-rm850",
+      "name": "Corsair RM850e 850W 80+ Gold Fully Modular PSU",
+      "brand": "Corsair",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 13500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Wattage",
+          "value": "850W"
+        },
+        {
+          "label": "Efficiency",
+          "value": "80+ Gold"
+        },
+        {
+          "label": "Modular",
+          "value": "Fully Modular"
+        },
+        {
+          "label": "Connectors",
+          "value": "PCIe 5.0 12VHPWR"
+        },
+        {
+          "label": "Fan",
+          "value": "140mm low-noise"
+        },
+        {
+          "label": "Warranty",
+          "value": "7 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "cooler-ak620",
+      "name": "DeepCool AK620 Dual-Tower CPU Air Cooler",
+      "brand": "DeepCool",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 6500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Type",
+          "value": "Dual-Tower Air"
+        },
+        {
+          "label": "TDP Rating",
+          "value": "260W"
+        },
+        {
+          "label": "Fans",
+          "value": "2x 120mm PWM"
+        },
+        {
+          "label": "Sockets",
+          "value": "AM5 · LGA1700"
+        },
+        {
+          "label": "Height",
+          "value": "160mm"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "cooler-h100i",
+      "name": "Corsair iCUE H100i RGB Elite 240mm AIO Liquid Cooler",
+      "brand": "Corsair",
+      "categorySlug": "components",
+      "subCategorySlug": null,
+      "listPrice": 15500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Type",
+          "value": "240mm AIO Liquid"
+        },
+        {
+          "label": "TDP Rating",
+          "value": "300W"
+        },
+        {
+          "label": "Fans",
+          "value": "2x 120mm AF Elite"
+        },
+        {
+          "label": "Sockets",
+          "value": "AM5 · LGA1700"
+        },
+        {
+          "label": "Lighting",
+          "value": "Dynamic RGB"
+        },
+        {
+          "label": "Warranty",
+          "value": "5 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "case-4000d",
+      "name": "Corsair 4000D Airflow Mid-Tower ATX Case",
+      "brand": "Corsair",
+      "categorySlug": "components",
+      "subCategorySlug": "cooling",
+      "listPrice": 9800,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1591488320449-011701bb6704?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Type",
+          "value": "Mid-Tower ATX"
+        },
+        {
+          "label": "Fans",
+          "value": "2x 120mm included"
+        },
+        {
+          "label": "Clearance",
+          "value": "GPU up to 360mm"
+        },
+        {
+          "label": "Cooling",
+          "value": "Up to 360mm radiator"
+        },
+        {
+          "label": "Panel",
+          "value": "Tempered glass"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "logi-mx",
+      "name": "Logitech MX Master 3S Wireless Mouse",
+      "brand": "Logitech",
+      "categorySlug": "accessories",
+      "subCategorySlug": "mouse",
+      "listPrice": 12500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Sensor",
+          "value": "8000 DPI Darkfield"
+        },
+        {
+          "label": "Buttons",
+          "value": "7, customizable"
+        },
+        {
+          "label": "Scroll",
+          "value": "MagSpeed electromagnetic"
+        },
+        {
+          "label": "Connection",
+          "value": "Bluetooth / Logi Bolt"
+        },
+        {
+          "label": "Battery",
+          "value": "70 days per charge"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "ugreen-hub",
+      "name": "UGREEN Revodok Pro 209 9-in-1 USB-C Hub",
+      "brand": "UGREEN",
+      "categorySlug": "accessories",
+      "subCategorySlug": "card-reader",
+      "listPrice": 6500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1519558260268-cde7e03a0152?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Ports",
+          "value": "HDMI 4K · 3x USB-A · USB-C PD"
+        },
+        {
+          "label": "Card Reader",
+          "value": "SD / microSD"
+        },
+        {
+          "label": "Ethernet",
+          "value": "Gigabit RJ45"
+        },
+        {
+          "label": "Power",
+          "value": "100W Pass-through"
+        },
+        {
+          "label": "Build",
+          "value": "Aluminium alloy"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "sandisk",
+      "name": "SanDisk Extreme PRO 128GB USB-C Flash Drive",
+      "brand": "SanDisk",
+      "categorySlug": "accessories",
+      "subCategorySlug": null,
+      "listPrice": 3500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1541140532154-b024d705b90a?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Capacity",
+          "value": "128GB"
+        },
+        {
+          "label": "Interface",
+          "value": "USB 3.2 Gen 1, USB-C"
+        },
+        {
+          "label": "Read Speed",
+          "value": "Up to 420 MB/s"
+        },
+        {
+          "label": "Design",
+          "value": "Retractable connector"
+        },
+        {
+          "label": "Encryption",
+          "value": "128-bit AES software"
+        },
+        {
+          "label": "Warranty",
+          "value": "Lifetime Limited"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "ip16",
+      "name": "Apple iPhone 16 128GB",
+      "brand": "Apple",
+      "categorySlug": "phone-and-tab",
+      "subCategorySlug": null,
+      "listPrice": 145000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Chip",
+          "value": "A18"
+        },
+        {
+          "label": "Display",
+          "value": "6.1\" Super Retina XDR"
+        },
+        {
+          "label": "Camera",
+          "value": "48MP Fusion + 12MP UW"
+        },
+        {
+          "label": "Storage",
+          "value": "128GB"
+        },
+        {
+          "label": "Battery",
+          "value": "Up to 22h video"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Official"
+        }
+      ],
+      "badges": [
+        "Hot",
+        "Best Seller"
+      ]
+    },
+    {
+      "slug": "tab-s10",
+      "name": "Samsung Galaxy Tab S10 FE 8/128GB",
+      "brand": "Samsung",
+      "categorySlug": "phone-and-tab",
+      "subCategorySlug": null,
+      "listPrice": 68000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Chipset",
+          "value": "Exynos 1580"
+        },
+        {
+          "label": "Display",
+          "value": "10.9\" LCD 90Hz"
+        },
+        {
+          "label": "RAM / Storage",
+          "value": "8GB / 128GB"
+        },
+        {
+          "label": "S Pen",
+          "value": "Included"
+        },
+        {
+          "label": "Battery",
+          "value": "8000mAh"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Official"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "odyssey-g9",
+      "name": "Samsung Odyssey G9 49\" Curved QHD 240Hz",
+      "brand": "Samsung",
+      "categorySlug": "monitor",
+      "subCategorySlug": null,
+      "listPrice": 145000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1616588589676-62b3bd4ff6d2?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Size",
+          "value": "49\" VA Curved (1000R)"
+        },
+        {
+          "label": "Resolution",
+          "value": "5120 x 1440 DQHD"
+        },
+        {
+          "label": "Refresh Rate",
+          "value": "240Hz, 1ms"
+        },
+        {
+          "label": "HDR",
+          "value": "HDR1000, QLED"
+        },
+        {
+          "label": "Sync",
+          "value": "G-SYNC / FreeSync Premium Pro"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "dell-u2723",
+      "name": "Dell UltraSharp U2723QE 27\" 4K IPS Black",
+      "brand": "Dell",
+      "categorySlug": "monitor",
+      "subCategorySlug": null,
+      "listPrice": 68000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Size",
+          "value": "27\" IPS Black"
+        },
+        {
+          "label": "Resolution",
+          "value": "3840 x 2160 4K"
+        },
+        {
+          "label": "Color",
+          "value": "98% DCI-P3"
+        },
+        {
+          "label": "Ports",
+          "value": "USB-C 90W Hub · DP · HDMI"
+        },
+        {
+          "label": "Ergonomics",
+          "value": "Height / Pivot / Tilt"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "deco-x50",
+      "name": "TP-Link Deco X50 AX3000 Mesh Wi-Fi 6 (3-Pack)",
+      "brand": "TP-Link",
+      "categorySlug": "networking",
+      "subCategorySlug": null,
+      "listPrice": 27000,
+      "offerPrice": 24500,
+      "imageUrl": "https://images.unsplash.com/photo-1606904825846-647eb07f5be2?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Standard",
+          "value": "Wi-Fi 6 (802.11ax)"
+        },
+        {
+          "label": "Speed",
+          "value": "AX3000 dual-band"
+        },
+        {
+          "label": "Coverage",
+          "value": "Up to 650 m²"
+        },
+        {
+          "label": "Nodes",
+          "value": "3 units, seamless roaming"
+        },
+        {
+          "label": "Ports",
+          "value": "3x Gigabit per unit"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "ubiquiti",
+      "name": "Ubiquiti UniFi 6 Lite Access Point",
+      "brand": "Ubiquiti",
+      "categorySlug": "networking",
+      "subCategorySlug": "access-point",
+      "listPrice": 14500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1544117519-31a4b719223d?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Standard",
+          "value": "Wi-Fi 6 (802.11ax)"
+        },
+        {
+          "label": "Speed",
+          "value": "1.5 Gbps aggregate"
+        },
+        {
+          "label": "Clients",
+          "value": "300+ concurrent"
+        },
+        {
+          "label": "Power",
+          "value": "PoE (802.3af)"
+        },
+        {
+          "label": "Mounting",
+          "value": "Ceiling / wall"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "tl-sg1008",
+      "name": "TP-Link TL-SG1008D 8-Port Gigabit Switch",
+      "brand": "TP-Link",
+      "categorySlug": "networking",
+      "subCategorySlug": "switch",
+      "listPrice": 3200,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1606904825846-647eb07f5be2?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Ports",
+          "value": "8x 10/100/1000 Mbps"
+        },
+        {
+          "label": "Capacity",
+          "value": "16 Gbps switching"
+        },
+        {
+          "label": "Housing",
+          "value": "Desktop steel case"
+        },
+        {
+          "label": "Features",
+          "value": "Plug and play, QoS"
+        },
+        {
+          "label": "Power",
+          "value": "External adapter"
+        },
+        {
+          "label": "Warranty",
+          "value": "Lifetime"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "hp-lj",
+      "name": "HP LaserJet Pro M404dn Monochrome Printer",
+      "brand": "HP",
+      "categorySlug": "office-equipment",
+      "subCategorySlug": "printer",
+      "listPrice": 32500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1607435097405-db48f377bff6?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Type",
+          "value": "Monochrome Laser"
+        },
+        {
+          "label": "Speed",
+          "value": "Up to 38 ppm"
+        },
+        {
+          "label": "Duplex",
+          "value": "Automatic two-sided"
+        },
+        {
+          "label": "Connectivity",
+          "value": "USB · Ethernet"
+        },
+        {
+          "label": "Duty Cycle",
+          "value": "80,000 pages/month"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "epson-l3250",
+      "name": "Epson EcoTank L3250 Wi-Fi All-in-One",
+      "brand": "Epson",
+      "categorySlug": "office-equipment",
+      "subCategorySlug": null,
+      "listPrice": 28500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1607435097405-db48f377bff6?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Type",
+          "value": "Ink Tank, Print/Scan/Copy"
+        },
+        {
+          "label": "Speed",
+          "value": "Up to 33 ppm"
+        },
+        {
+          "label": "Yield",
+          "value": "Up to 4,500 pages/bottle"
+        },
+        {
+          "label": "Connectivity",
+          "value": "Wi-Fi · Wi-Fi Direct · USB"
+        },
+        {
+          "label": "App",
+          "value": "Epson Smart Panel"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": [
+        "Hot"
+      ]
+    },
+    {
+      "slug": "epson-proj",
+      "name": "Epson EB-X06 XGA 3LCD Projector 3600 Lumens",
+      "brand": "Epson",
+      "categorySlug": "office-equipment",
+      "subCategorySlug": "projector",
+      "listPrice": 52000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1607435097405-db48f377bff6?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Resolution",
+          "value": "XGA 1024 x 768"
+        },
+        {
+          "label": "Brightness",
+          "value": "3600 lumens"
+        },
+        {
+          "label": "Contrast",
+          "value": "16,000:1"
+        },
+        {
+          "label": "Lamp Life",
+          "value": "Up to 12,000 hours"
+        },
+        {
+          "label": "Connectivity",
+          "value": "HDMI · VGA · USB"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "aw-se",
+      "name": "Apple Watch SE 2 40mm GPS",
+      "brand": "Apple",
+      "categorySlug": "gadgets",
+      "subCategorySlug": null,
+      "listPrice": 36500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Display",
+          "value": "Retina LTPO OLED"
+        },
+        {
+          "label": "Chip",
+          "value": "S8 SiP"
+        },
+        {
+          "label": "Health",
+          "value": "Heart rate · Crash detection"
+        },
+        {
+          "label": "Water",
+          "value": "50m resistant"
+        },
+        {
+          "label": "Battery",
+          "value": "Up to 18 hours"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Apple Care"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "dji-mini",
+      "name": "DJI Mini 4K Camera Drone Fly More Combo",
+      "brand": "DJI",
+      "categorySlug": "gadgets",
+      "subCategorySlug": "drone",
+      "listPrice": 48500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Camera",
+          "value": "4K UHD, 3-axis gimbal"
+        },
+        {
+          "label": "Weight",
+          "value": "< 249g, no registration"
+        },
+        {
+          "label": "Flight Time",
+          "value": "Up to 31 min"
+        },
+        {
+          "label": "Range",
+          "value": "10 km FHD transmission"
+        },
+        {
+          "label": "Wind",
+          "value": "Level 5 resistance"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": [
+        "Hot"
+      ]
+    },
+    {
+      "slug": "airpods-pro",
+      "name": "Apple AirPods Pro 2 USB-C",
+      "brand": "Apple",
+      "categorySlug": "gadgets",
+      "subCategorySlug": null,
+      "listPrice": 27500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "ANC",
+          "value": "2x more than 1st gen"
+        },
+        {
+          "label": "Chip",
+          "value": "Apple H2"
+        },
+        {
+          "label": "Audio",
+          "value": "Adaptive · Personalized Spatial"
+        },
+        {
+          "label": "Battery",
+          "value": "6h (30h with case)"
+        },
+        {
+          "label": "Case",
+          "value": "USB-C, MagSafe, speaker"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Apple Care"
+        }
+      ],
+      "badges": [
+        "Best Seller"
+      ]
+    },
+    {
+      "slug": "fitbit",
+      "name": "Fitbit Charge 6 Fitness Tracker",
+      "brand": "Fitbit",
+      "categorySlug": "gadgets",
+      "subCategorySlug": null,
+      "listPrice": 15500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Display",
+          "value": "AMOLED touch"
+        },
+        {
+          "label": "Sensors",
+          "value": "HR · ECG · SpO2 · GPS"
+        },
+        {
+          "label": "Battery",
+          "value": "Up to 7 days"
+        },
+        {
+          "label": "Apps",
+          "value": "Google Maps · Wallet"
+        },
+        {
+          "label": "Water",
+          "value": "50m resistant"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "sony-a6400",
+      "name": "Sony Alpha a6400 Mirrorless with 16-50mm Kit",
+      "brand": "Sony",
+      "categorySlug": "cameras",
+      "subCategorySlug": "mirrorless",
+      "listPrice": 128000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Sensor",
+          "value": "24.2MP APS-C Exmor"
+        },
+        {
+          "label": "Video",
+          "value": "4K HDR, S-Log3"
+        },
+        {
+          "label": "AF",
+          "value": "Real-time Eye AF, 425 points"
+        },
+        {
+          "label": "Burst",
+          "value": "Up to 11 fps"
+        },
+        {
+          "label": "Screen",
+          "value": "180° tilt touchscreen"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Official"
+        }
+      ],
+      "badges": [
+        "Hot"
+      ]
+    },
+    {
+      "slug": "gopro13",
+      "name": "GoPro HERO13 Black Action Camera",
+      "brand": "GoPro",
+      "categorySlug": "cameras",
+      "subCategorySlug": "action-cam",
+      "listPrice": 62000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Video",
+          "value": "5.3K60 · 4K120"
+        },
+        {
+          "label": "Photo",
+          "value": "27MP"
+        },
+        {
+          "label": "Stabilization",
+          "value": "HyperSmooth 6.0"
+        },
+        {
+          "label": "Water",
+          "value": "10m waterproof"
+        },
+        {
+          "label": "Lens",
+          "value": "Swappable HB-Series mount"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "nikon-z50",
+      "name": "Nikon Z50 II Mirrorless with 16-50mm VR Kit",
+      "brand": "Nikon",
+      "categorySlug": "cameras",
+      "subCategorySlug": "mirrorless",
+      "listPrice": 135000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1502920917128-1aa500764cbd?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Sensor",
+          "value": "20.9MP APS-C DX"
+        },
+        {
+          "label": "Processor",
+          "value": "EXPEED 7"
+        },
+        {
+          "label": "Video",
+          "value": "4K UHD 60p"
+        },
+        {
+          "label": "AF",
+          "value": "Subject-detection AF"
+        },
+        {
+          "label": "Burst",
+          "value": "Up to 30 fps"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year Official"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "lg-c4",
+      "name": "LG OLED55C4 55\" 4K OLED evo Smart TV",
+      "brand": "LG",
+      "categorySlug": "tv-and-sound",
+      "subCategorySlug": null,
+      "listPrice": 189000,
+      "offerPrice": 175000,
+      "imageUrl": "https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Panel",
+          "value": "55\" OLED evo"
+        },
+        {
+          "label": "Resolution",
+          "value": "4K UHD, 144Hz"
+        },
+        {
+          "label": "Processor",
+          "value": "α9 AI Gen7"
+        },
+        {
+          "label": "HDR",
+          "value": "Dolby Vision · HDR10"
+        },
+        {
+          "label": "Gaming",
+          "value": "4x HDMI 2.1, G-SYNC"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years Panel"
+        }
+      ],
+      "badges": [
+        "Hot",
+        "Best Seller"
+      ]
+    },
+    {
+      "slug": "sonos-beam",
+      "name": "Sonos Beam Gen 2 Smart Soundbar",
+      "brand": "Sonos",
+      "categorySlug": "tv-and-sound",
+      "subCategorySlug": "soundbar",
+      "listPrice": 62000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1546027658-7aa750153465?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Audio",
+          "value": "Dolby Atmos"
+        },
+        {
+          "label": "Drivers",
+          "value": "5 (1 tweeter, 4 woofers)"
+        },
+        {
+          "label": "Voice",
+          "value": "Alexa · Google Assistant"
+        },
+        {
+          "label": "Connectivity",
+          "value": "HDMI eARC · Wi-Fi"
+        },
+        {
+          "label": "App",
+          "value": "Sonos App, AirPlay 2"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "jbl-flip6",
+      "name": "JBL Flip 6 Portable Bluetooth Speaker",
+      "brand": "JBL",
+      "categorySlug": "tv-and-sound",
+      "subCategorySlug": "bluetooth-speaker",
+      "listPrice": 16000,
+      "offerPrice": 14500,
+      "imageUrl": "https://images.unsplash.com/photo-1608043152269-423dbba4e7e1?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Output",
+          "value": "30W RMS"
+        },
+        {
+          "label": "Battery",
+          "value": "Up to 12 hours"
+        },
+        {
+          "label": "Water",
+          "value": "IP67 waterproof"
+        },
+        {
+          "label": "Feature",
+          "value": "PartyBoost pairing"
+        },
+        {
+          "label": "Bluetooth",
+          "value": "5.1"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "apc-1100",
+      "name": "APC Back-UPS Pro BR1100VA Line-Interactive",
+      "brand": "APC",
+      "categorySlug": "power",
+      "subCategorySlug": "ups",
+      "listPrice": 16500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1593305841991-05c297ba4575?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Capacity",
+          "value": "1100VA / 660W"
+        },
+        {
+          "label": "Outlets",
+          "value": "6x battery + surge"
+        },
+        {
+          "label": "Display",
+          "value": "LCD status"
+        },
+        {
+          "label": "AVR",
+          "value": "Automatic Voltage Regulation"
+        },
+        {
+          "label": "Management",
+          "value": "USB monitoring"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "luminous-ips",
+      "name": "Luminous 1200VA Pure Sine Wave IPS + Battery",
+      "brand": "Luminous",
+      "categorySlug": "power",
+      "subCategorySlug": "ips",
+      "listPrice": 42000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1593305841991-05c297ba4575?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Capacity",
+          "value": "1200VA"
+        },
+        {
+          "label": "Output",
+          "value": "Pure sine wave"
+        },
+        {
+          "label": "Battery",
+          "value": "150Ah tall tubular"
+        },
+        {
+          "label": "Backup",
+          "value": "Extended home backup"
+        },
+        {
+          "label": "Protection",
+          "value": "Overload / short circuit"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years + 36m Battery"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "anker-strip",
+      "name": "Anker 351 6-Outlet Power Strip Surge Protector",
+      "brand": "Anker",
+      "categorySlug": "power",
+      "subCategorySlug": "power-strip",
+      "listPrice": 3800,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1593305841991-05c297ba4575?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Outlets",
+          "value": "6x AC + 2x USB-A + 1x USB-C"
+        },
+        {
+          "label": "Surge",
+          "value": "2100 Joules protection"
+        },
+        {
+          "label": "Cord",
+          "value": "1.5m flat plug"
+        },
+        {
+          "label": "USB Output",
+          "value": "30W USB-C PD"
+        },
+        {
+          "label": "Safety",
+          "value": "Fireproof housing"
+        },
+        {
+          "label": "Warranty",
+          "value": "18 Months"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "reolink",
+      "name": "Reolink RLC-810A 4K PoE IP Camera",
+      "brand": "Reolink",
+      "categorySlug": "security",
+      "subCategorySlug": null,
+      "listPrice": 12500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1558002038-1055907df827?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Resolution",
+          "value": "4K 8MP Ultra HD"
+        },
+        {
+          "label": "Detection",
+          "value": "Person / Vehicle AI"
+        },
+        {
+          "label": "Power",
+          "value": "PoE single cable"
+        },
+        {
+          "label": "Night Vision",
+          "value": "Up to 30m IR"
+        },
+        {
+          "label": "Storage",
+          "value": "microSD + NVR"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "ezviz",
+      "name": "EZVIZ C6N 1080p Indoor Wi-Fi Pan/Tilt Camera",
+      "brand": "EZVIZ",
+      "categorySlug": "security",
+      "subCategorySlug": null,
+      "listPrice": 4500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1558002038-1055907df827?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Resolution",
+          "value": "1080p Full HD"
+        },
+        {
+          "label": "View",
+          "value": "340° pan / 75° tilt"
+        },
+        {
+          "label": "Detection",
+          "value": "Smart motion tracking"
+        },
+        {
+          "label": "Night Vision",
+          "value": "Up to 10m"
+        },
+        {
+          "label": "Audio",
+          "value": "Two-way talk"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "yale-lock",
+      "name": "Yale Smart Door Lock with Fingerprint",
+      "brand": "Yale",
+      "categorySlug": "security",
+      "subCategorySlug": "door-lock",
+      "listPrice": 32000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1558002038-1055907df827?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Unlock",
+          "value": "Fingerprint · PIN · Card · App"
+        },
+        {
+          "label": "Capacity",
+          "value": "100 fingerprints"
+        },
+        {
+          "label": "Connectivity",
+          "value": "Bluetooth · Wi-Fi bridge"
+        },
+        {
+          "label": "Battery",
+          "value": "AA, 12-month life"
+        },
+        {
+          "label": "Alarm",
+          "value": "Tamper + forced entry"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": [
+        "Hot"
+      ]
+    },
+    {
+      "slug": "xbox-x",
+      "name": "Microsoft Xbox Series X 1TB Console",
+      "brand": "Microsoft",
+      "categorySlug": "gaming",
+      "subCategorySlug": "controller",
+      "listPrice": 62000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1601944177325-f8867652837f?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "CPU / GPU",
+          "value": "AMD Zen 2 / RDNA 2 12 TF"
+        },
+        {
+          "label": "Storage",
+          "value": "1TB Custom NVMe SSD"
+        },
+        {
+          "label": "Resolution",
+          "value": "Up to 8K, 120fps"
+        },
+        {
+          "label": "Drive",
+          "value": "4K UHD Blu-ray"
+        },
+        {
+          "label": "Controller",
+          "value": "Wireless included"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "secretlab",
+      "name": "Secretlab TITAN Evo 2022 Gaming Chair",
+      "brand": "Secretlab",
+      "categorySlug": "gaming",
+      "subCategorySlug": "gaming-chair",
+      "listPrice": 78000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1593784991095-a205069470b6?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Material",
+          "value": "NEO Hybrid Leatherette"
+        },
+        {
+          "label": "Support",
+          "value": "4-way L-ADAPT lumbar"
+        },
+        {
+          "label": "Armrests",
+          "value": "4D CloudSwap"
+        },
+        {
+          "label": "Recline",
+          "value": "165° with tilt lock"
+        },
+        {
+          "label": "Capacity",
+          "value": "Up to 130 kg"
+        },
+        {
+          "label": "Warranty",
+          "value": "5 Years"
+        }
+      ],
+      "badges": [
+        "Hot"
+      ]
+    },
+    {
+      "slug": "dyson-fan",
+      "name": "Dyson Cool AM07 Bladeless Tower Fan",
+      "brand": "Dyson",
+      "categorySlug": "appliance",
+      "subCategorySlug": "fan",
+      "listPrice": 55000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1565814329452-e1efa11c5b89?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Type",
+          "value": "Bladeless Air Multiplier"
+        },
+        {
+          "label": "Speeds",
+          "value": "10 airflow settings"
+        },
+        {
+          "label": "Control",
+          "value": "Remote + sleep timer"
+        },
+        {
+          "label": "Noise",
+          "value": "Acoustically engineered"
+        },
+        {
+          "label": "Oscillation",
+          "value": "Smooth 90°"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "xiaomi-purifier",
+      "name": "Xiaomi Smart Air Purifier 4",
+      "brand": "Xiaomi",
+      "categorySlug": "appliance",
+      "subCategorySlug": "air-purifier",
+      "listPrice": 28500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1565814329452-e1efa11c5b89?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Coverage",
+          "value": "Up to 48 m²"
+        },
+        {
+          "label": "Filter",
+          "value": "3-in-1 True HEPA H13"
+        },
+        {
+          "label": "CADR",
+          "value": "400 m³/h"
+        },
+        {
+          "label": "Display",
+          "value": "OLED touch"
+        },
+        {
+          "label": "Smart",
+          "value": "Mi Home app · voice"
+        },
+        {
+          "label": "Warranty",
+          "value": "1 Year"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "philips-airfry",
+      "name": "Philips 3000 Series XL Airfryer 6.2L",
+      "brand": "Philips",
+      "categorySlug": "appliance",
+      "subCategorySlug": null,
+      "listPrice": 25000,
+      "offerPrice": 22500,
+      "imageUrl": "https://images.unsplash.com/photo-1565814329452-e1efa11c5b89?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Capacity",
+          "value": "6.2L / 1.4kg"
+        },
+        {
+          "label": "Technology",
+          "value": "Rapid Air"
+        },
+        {
+          "label": "Presets",
+          "value": "7 one-touch programs"
+        },
+        {
+          "label": "Temperature",
+          "value": "Up to 200°C"
+        },
+        {
+          "label": "Cleaning",
+          "value": "Dishwasher-safe basket"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": [
+        "Hot"
+      ]
+    },
+    {
+      "slug": "win11-pro",
+      "name": "Microsoft Windows 11 Pro Retail License",
+      "brand": "Microsoft",
+      "categorySlug": "software",
+      "subCategorySlug": null,
+      "listPrice": 18500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Edition",
+          "value": "Windows 11 Pro"
+        },
+        {
+          "label": "License",
+          "value": "Retail, lifetime"
+        },
+        {
+          "label": "Devices",
+          "value": "1 PC"
+        },
+        {
+          "label": "Delivery",
+          "value": "Digital key + USB"
+        },
+        {
+          "label": "Features",
+          "value": "BitLocker · Hyper-V"
+        },
+        {
+          "label": "Warranty",
+          "value": "Genuine activation"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "office365",
+      "name": "Microsoft 365 Family 12-Month Subscription",
+      "brand": "Microsoft",
+      "categorySlug": "software",
+      "subCategorySlug": null,
+      "listPrice": 9500,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Users",
+          "value": "Up to 6 people"
+        },
+        {
+          "label": "Apps",
+          "value": "Word · Excel · PowerPoint · Outlook"
+        },
+        {
+          "label": "Storage",
+          "value": "1TB OneDrive per user"
+        },
+        {
+          "label": "Devices",
+          "value": "PC · Mac · mobile"
+        },
+        {
+          "label": "Term",
+          "value": "12 months"
+        },
+        {
+          "label": "Warranty",
+          "value": "Genuine subscription"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "kaspersky",
+      "name": "Kaspersky Plus 3-Device 1-Year",
+      "brand": "Kaspersky",
+      "categorySlug": "software",
+      "subCategorySlug": null,
+      "listPrice": 2200,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Protection",
+          "value": "Anti-malware + VPN"
+        },
+        {
+          "label": "Devices",
+          "value": "3 (PC / Mac / mobile)"
+        },
+        {
+          "label": "Term",
+          "value": "1 Year"
+        },
+        {
+          "label": "Features",
+          "value": "Password manager · Firewall"
+        },
+        {
+          "label": "Performance",
+          "value": "Lightweight scanning"
+        },
+        {
+          "label": "Warranty",
+          "value": "Genuine license"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "dell-r750",
+      "name": "Dell PowerEdge R750 Rack Server Xeon Silver",
+      "brand": "Dell",
+      "categorySlug": "servers",
+      "subCategorySlug": "rack-server",
+      "listPrice": 685000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Form Factor",
+          "value": "2U Rack"
+        },
+        {
+          "label": "Processor",
+          "value": "2x Intel Xeon Silver 4314"
+        },
+        {
+          "label": "Memory",
+          "value": "64GB DDR4 (expandable)"
+        },
+        {
+          "label": "Storage",
+          "value": "2x 960GB SSD, hot-swap"
+        },
+        {
+          "label": "Redundancy",
+          "value": "Dual 800W PSU"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years ProSupport"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "hp-ml30",
+      "name": "HPE ProLiant ML30 Gen11 Tower Server",
+      "brand": "HPE",
+      "categorySlug": "servers",
+      "subCategorySlug": "tower-server",
+      "listPrice": 285000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Form Factor",
+          "value": "4U Tower"
+        },
+        {
+          "label": "Processor",
+          "value": "Intel Xeon E-2434"
+        },
+        {
+          "label": "Memory",
+          "value": "32GB DDR5 ECC"
+        },
+        {
+          "label": "Storage",
+          "value": "4x LFF hot-plug bays"
+        },
+        {
+          "label": "Management",
+          "value": "iLO 6"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": []
+    },
+    {
+      "slug": "synology",
+      "name": "Synology DiskStation DS923+ 4-Bay NAS",
+      "brand": "Synology",
+      "categorySlug": "servers",
+      "subCategorySlug": null,
+      "listPrice": 98000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Bays",
+          "value": "4 (expandable to 9)"
+        },
+        {
+          "label": "Processor",
+          "value": "AMD Ryzen R1600"
+        },
+        {
+          "label": "Memory",
+          "value": "4GB DDR4 ECC"
+        },
+        {
+          "label": "Network",
+          "value": "2x 1GbE (10GbE optional)"
+        },
+        {
+          "label": "OS",
+          "value": "Synology DSM"
+        },
+        {
+          "label": "Warranty",
+          "value": "3 Years"
+        }
+      ],
+      "badges": [
+        "New"
+      ]
+    },
+    {
+      "slug": "qnap",
+      "name": "QNAP TS-464 4-Bay NAS Intel Celeron",
+      "brand": "QNAP",
+      "categorySlug": "servers",
+      "subCategorySlug": null,
+      "listPrice": 82000,
+      "offerPrice": null,
+      "imageUrl": "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=800&q=80",
+      "specs": [
+        {
+          "label": "Bays",
+          "value": "4 SATA"
+        },
+        {
+          "label": "Processor",
+          "value": "Intel Celeron N5095"
+        },
+        {
+          "label": "Memory",
+          "value": "8GB DDR4"
+        },
+        {
+          "label": "Network",
+          "value": "2x 2.5GbE"
+        },
+        {
+          "label": "Expansion",
+          "value": "2x M.2 · PCIe slot"
+        },
+        {
+          "label": "Warranty",
+          "value": "2 Years"
+        }
+      ],
+      "badges": []
+    }
+  ]
+}

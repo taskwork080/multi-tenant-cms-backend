@@ -1,6 +1,7 @@
 import { Controller, Get, Headers, Param, Query } from "@nestjs/common";
 import { ApiOperation, ApiParam, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { Public } from "../auth/decorators";
+import { publicBrandQuerySchema, publicProductQuerySchema } from "./storefront.schemas";
 import { StorefrontService } from "./storefront.service";
 import { Throttle } from "@nestjs/throttler";
 
@@ -72,21 +73,71 @@ export class PublicStorefrontController {
 
   @Get(":tenant/products")
   @ApiParam({ name: "tenant", description: "Tenant slug" })
+  @ApiQuery({ name: "q", required: false, description: "Free-text over name, slug, style code and brand" })
   @ApiQuery({ name: "categoryId", required: false })
-  @ApiQuery({ name: "limit", required: false, description: "1–24, default 8" })
+  @ApiQuery({ name: "categorySlug", required: false })
+  @ApiQuery({ name: "subCategoryId", required: false })
+  @ApiQuery({ name: "subCategorySlug", required: false })
+  @ApiQuery({ name: "brandIds", required: false, description: "Comma-separated brand ids" })
+  @ApiQuery({ name: "brands", required: false, description: "Comma-separated brand names" })
+  @ApiQuery({ name: "badge", required: false, description: 'One badge label, e.g. "Best Seller"' })
+  @ApiQuery({ name: "onSale", required: false, description: "true = only products with an offer price" })
+  @ApiQuery({ name: "priceMin", required: false })
+  @ApiQuery({ name: "priceMax", required: false })
+  @ApiQuery({ name: "sort", required: false, enum: ["pop", "lo", "hi", "new", "discount"] })
+  @ApiQuery({ name: "page", required: false, description: "1-based, default 1" })
+  @ApiQuery({ name: "pageSize", required: false, description: "1–48, default 24" })
   @ApiOperation({
-    summary: "Active products for the storefront's product grid",
-    description: "Drafts are excluded. Returns a card-sized DTO — no stock, cost or seller data.",
+    summary: "Browse the active catalogue",
+    description:
+      "Drafts are excluded. Filtering, sorting and paging all happen in SQL. Returns card-sized " +
+      "DTOs — brand, category, badges and an inStock boolean, never a stock number, cost or seller.",
   })
-  products(
-    @Param("tenant") tenant: string,
-    @Query("categoryId") categoryId?: string,
-    @Query("limit") limit?: string,
-  ) {
-    return this.storefront.publicProducts(tenant, {
-      categoryId: categoryId || undefined,
-      limit: limit ? parseInt(limit, 10) : undefined,
-    });
+  products(@Param("tenant") tenant: string, @Query() query: unknown) {
+    return this.storefront.publicProducts(tenant, publicProductQuerySchema.parse(query));
+  }
+
+  @Get(":tenant/products/:slug")
+  @ApiParam({ name: "tenant", description: "Tenant slug" })
+  @ApiParam({ name: "slug", description: "Product slug" })
+  @ApiOperation({
+    summary: "Get one active product",
+    description: "Adds description, gallery, specs, tags, variants and pricing tiers. Drafts are 404.",
+  })
+  product(@Param("tenant") tenant: string, @Param("slug") slug: string) {
+    return this.storefront.publicProduct(tenant, slug);
+  }
+
+  @Get(":tenant/categories")
+  @ApiParam({ name: "tenant", description: "Tenant slug" })
+  @ApiOperation({
+    summary: "Active categories, flat and parent-linked",
+    description: "Feeds menus, the category bar and static params.",
+  })
+  categories(@Param("tenant") tenant: string) {
+    return this.storefront.publicCategories(tenant);
+  }
+
+  @Get(":tenant/brands")
+  @ApiParam({ name: "tenant", description: "Tenant slug" })
+  @ApiQuery({ name: "categoryId", required: false })
+  @ApiQuery({ name: "categorySlug", required: false })
+  @ApiQuery({ name: "subCategoryId", required: false })
+  @ApiQuery({ name: "subCategorySlug", required: false })
+  @ApiOperation({
+    summary: "Brand facet counts",
+    description: "Scoped to the category being browsed, so a facet never offers an empty result.",
+  })
+  brands(@Param("tenant") tenant: string, @Query() query: unknown) {
+    return this.storefront.publicBrands(tenant, publicBrandQuerySchema.parse(query));
+  }
+
+  @Get(":tenant/reviews/:slug")
+  @ApiParam({ name: "tenant", description: "Tenant slug" })
+  @ApiParam({ name: "slug", description: "Product slug" })
+  @ApiOperation({ summary: "Approved reviews for one product", description: "Pending and rejected are invisible." })
+  reviews(@Param("tenant") tenant: string, @Param("slug") slug: string) {
+    return this.storefront.publicReviews(tenant, slug);
   }
 
   @Get(":tenant/pages/:slug")

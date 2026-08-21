@@ -219,6 +219,66 @@ export const navUpdateSchema = z.object({
   items: navItemsSchema,
 });
 
+// --- Public catalogue --------------------------------------------------------
+
+/** `?brands=ASUS,Apple` — the storefront facets by name, the admin by id. */
+const csv = z
+  .string()
+  .transform((v) =>
+    v
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  )
+  .pipe(z.array(z.string().min(1).max(120)).max(40));
+
+/**
+ * Everything the storefront's catalogue listing can ask for.
+ *
+ * Coerced rather than strict because these arrive as query strings, and
+ * bounded rather than optional-unbounded because this endpoint is anonymous:
+ * `pageSize` is what stands between a scraper and the whole catalogue in one
+ * request.
+ *
+ * `sort: "pop"` has no popularity signal to sort by yet — there is no sales
+ * or view counter on products — so it means "newest first", which is what the
+ * feed has always returned. Named for what the storefront calls it so the
+ * contract does not change when a real signal arrives.
+ */
+export const publicProductQuerySchema = z.object({
+  q: z.string().trim().max(120).optional(),
+  categoryId: z.string().uuid().optional(),
+  categorySlug: z.string().max(120).optional(),
+  subCategoryId: z.string().uuid().optional(),
+  subCategorySlug: z.string().max(120).optional(),
+  brandIds: csv.optional(),
+  brands: csv.optional(),
+  /** One badge label, e.g. "Best Seller" — how a storefront curates a shelf. */
+  badge: z.string().trim().min(1).max(60).optional(),
+  /** Only products with an offer price. The discount rail depends on it. */
+  onSale: z
+    .enum(["true", "false"])
+    .transform((v) => v === "true")
+    .optional(),
+  priceMin: z.coerce.number().min(0).optional(),
+  priceMax: z.coerce.number().min(0).optional(),
+  sort: z.enum(["pop", "lo", "hi", "new", "discount"]).default("pop"),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(48).default(24),
+});
+
+export type PublicProductQuery = z.infer<typeof publicProductQuerySchema>;
+
+/** Brand facets are always scoped to the category being browsed, or all. */
+export const publicBrandQuerySchema = publicProductQuerySchema.pick({
+  categoryId: true,
+  categorySlug: true,
+  subCategoryId: true,
+  subCategorySlug: true,
+});
+
+export type PublicBrandQuery = z.infer<typeof publicBrandQuerySchema>;
+
 export type ThemeInput = z.infer<typeof themeSchema>;
 export type SeoInput = z.infer<typeof seoSchema>;
 export type ConfigUpdateInput = z.infer<typeof configUpdateSchema>;

@@ -1,14 +1,31 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { and, asc, count, desc, eq, ilike, or } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, lte, notInArray, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import type { Db } from "../db/db.tokens";
 import { TenantDb } from "../db/tenant-db.service";
 import {
+  brands,
+  categories,
   DEFAULT_STOREFRONT_SEO,
   DEFAULT_STOREFRONT_THEME,
+  inventoryLevels,
+  orderItems,
+  orders,
+  productBadges,
+  productImages,
+  productPricingTiers,
   products,
+  productSpecs,
+  productTags,
+  productVariants,
+  reviews,
+  skus,
   storefrontConfigs,
+  storefrontDeliveryZones,
   storefrontNavigation,
   storefrontPages,
+  storefrontPaymentMethods,
   type ContentBlock,
   type NavItem,
   type StorefrontSeo,
@@ -24,6 +41,8 @@ import {
   type NavLocation,
   type PageCreateInput,
   type PageUpdateInput,
+  type PublicBrandQuery,
+  type PublicProductQuery,
 } from "./storefront.schemas";
 
 /**
@@ -63,6 +82,23 @@ export interface PublicSiteDto {
   seo: StorefrontSeo;
   navigation: { header: NavItem[]; footer: NavItem[] };
   pages: { slug: string; title: string }[];
+  /**
+   * What checkout charges. Served with the shell so the storefront can render
+   * its payment options and quote delivery without a second round trip — and
+   * so those figures come from the shop's configuration rather than being
+   * hard-coded in the storefront the way they used to be.
+   */
+  commerce: {
+    deliveryZones: { name: string; district: string | null; fee: number }[];
+    paymentMethods: {
+      code: string;
+      label: string;
+      description: string;
+      feePct: number;
+      skipsDelivery: boolean;
+      payOnDelivery: boolean;
+    }[];
+  };
 }
 
 /** The catalogue fields a storefront product card needs — nothing else. */
@@ -73,6 +109,81 @@ export interface PublicProductDto {
   price: number;
   offerPrice: number | null;
   imageUrl: string | null;
+  brand: string | null;
+  categoryName: string | null;
+  categorySlug: string | null;
+  badges: string[];
+  /**
+   * Mean of the approved reviews, to one decimal. Null when there are none —
+   * distinct from a genuine 0, and the difference matters: a storefront that
+   * renders "0.0 ★" on every new product looks broken and sells nothing.
+   */
+  rating: number | null;
+  reviewCount: number;
+  /** Units sold across orders that were not cancelled. */
+  sold: number;
+  /**
+   * Deliberately a boolean.
+   *
+   * `products.stock` is a denormalised counter that drifts from
+   * inventory_levels, and the real figure is competitive information. A shopper
+   * only ever needs to know whether they can buy it.
+   */
+  inStock: boolean;
+}
+
+export interface PublicProductListDto {
+  items: PublicProductDto[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface PublicProductDetailDto extends PublicProductDto {
+  shortDescription: string | null;
+  description: string | null;
+  subCategoryName: string | null;
+  subCategorySlug: string | null;
+  videoUrl: string | null;
+  unit: string;
+  minOrderQty: number;
+  maxOrderQty: number | null;
+  images: string[];
+  specs: { label: string; value: string }[];
+  tags: string[];
+  variants: {
+    id: string;
+    label: string;
+    type: string;
+    price: number;
+    originalPrice: number | null;
+    badge: string | null;
+  }[];
+  pricingTiers: { minQty: number; unitPrice: number }[];
+}
+
+export interface PublicCategoryDto {
+  id: string;
+  name: string;
+  slug: string;
+  parentId: string | null;
+  level: number;
+  /** Active products filed directly under this category. */
+  productCount: number;
+}
+
+export interface PublicBrandDto {
+  id: string;
+  name: string;
+  productCount: number;
+}
+
+export interface PublicReviewDto {
+  id: string;
+  author: string;
+  rating: number;
+  comment: string;
+  createdAt: Date;
 }
 
 export interface PublicPageDto {
@@ -452,6 +563,19 @@ export class StorefrontService {
     return { tenant, config };
   }
 
+  /**
+   * The public liveness gate, for other services on the anonymous path.
+   *
+   * PublicCheckoutService needs exactly the same check every read goes through
+   * — tenant exists, holds the module, has switched the storefront on — and
+   * must fail it exactly the same way. Exposing this is what stops checkout
+   * growing a second, subtly different notion of "open for business".
+   */
+  async requireLiveTenant(slug: string): Promise<TenantDto> {
+    const { tenant } = await this.assertLive(slug);
+    return tenant;
+  }
+
   /** Host/slug -> the slug the storefront should use for subsequent calls. */
   async resolve(host: string | undefined, slug: string | undefined): Promise<{ tenantSlug: string }> {
     const resolved = await this.resolveHost(host, slug);
@@ -460,17 +584,72 @@ export class StorefrontService {
     return { tenantSlug: tenant.slug };
   }
 
+  /**
+   * Is this browser `Origin` a storefront we actually serve?
+   *
+   * CORS_ORIGIN is a static list, which cannot cover tenant custom domains —
+   * those are created by tenants at runtime, and a storefront whose checkout
+   * calls are blocked by CORS is a storefront that cannot take an order. Reuses
+   * the same host resolution and the same liveness gate as every public read,
+   * so an origin is allowed on exactly the terms its storefront is.
+   *
+   * Backed by resolveHost's 30s cache, so a preflight storm is not a query
+   * storm. Never throws: a CORS check answering 500 tells the caller nothing
+   * useful and hides the real failure.
+   */
+  async isLiveOrigin(origin: string): Promise<boolean> {
+    try {
+      const slug = await this.resolveHost(origin, undefined);
+      if (!slug) return false;
+      await this.assertLive(slug);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** Everything the storefront shell needs, in one round trip. */
   async publicSite(slug: string): Promise<PublicSiteDto> {
     const { tenant, config } = await this.assertLive(slug);
     return this.tdb.forTenant(tenant.id, async (tx) => {
-      const [navRows, pageRows] = await Promise.all([
+      const [navRows, pageRows, zones, methods] = await Promise.all([
         tx.select().from(storefrontNavigation).where(eq(storefrontNavigation.tenantId, tenant.id)),
         tx
           .select({ slug: storefrontPages.slug, title: storefrontPages.title })
           .from(storefrontPages)
           .where(and(eq(storefrontPages.tenantId, tenant.id), eq(storefrontPages.isPublished, true)))
           .orderBy(asc(storefrontPages.sortOrder), asc(storefrontPages.title)),
+        tx
+          .select({
+            name: storefrontDeliveryZones.name,
+            district: storefrontDeliveryZones.district,
+            fee: storefrontDeliveryZones.fee,
+          })
+          .from(storefrontDeliveryZones)
+          .where(
+            and(
+              eq(storefrontDeliveryZones.tenantId, tenant.id),
+              eq(storefrontDeliveryZones.active, true),
+            ),
+          )
+          .orderBy(asc(storefrontDeliveryZones.sort)),
+        tx
+          .select({
+            code: storefrontPaymentMethods.code,
+            label: storefrontPaymentMethods.label,
+            description: storefrontPaymentMethods.description,
+            feePct: storefrontPaymentMethods.feePct,
+            skipsDelivery: storefrontPaymentMethods.skipsDelivery,
+            payOnDelivery: storefrontPaymentMethods.payOnDelivery,
+          })
+          .from(storefrontPaymentMethods)
+          .where(
+            and(
+              eq(storefrontPaymentMethods.tenantId, tenant.id),
+              eq(storefrontPaymentMethods.active, true),
+            ),
+          )
+          .orderBy(asc(storefrontPaymentMethods.sort)),
       ]);
       return {
         tenantSlug: tenant.slug,
@@ -484,6 +663,7 @@ export class StorefrontService {
           footer: navRows.find((r) => r.location === "footer")?.items ?? [],
         },
         pages: pageRows,
+        commerce: { deliveryZones: zones, paymentMethods: methods },
       };
     });
   }
@@ -517,37 +697,467 @@ export class StorefrontService {
     });
   }
 
+  // -------------------------------------------------------------------------
+  // Public catalogue
+  // -------------------------------------------------------------------------
+
   /**
-   * Catalogue feed for the storefront's productGrid block.
+   * Resolves the category/sub-category filters, which arrive as either an id
+   * or a slug depending on the caller — the productGrid block stores ids, the
+   * storefront's own URLs carry slugs (/category/laptop).
+   *
+   * A slug that matches nothing returns `null`, which the callers turn into an
+   * empty result rather than silently listing the whole catalogue.
+   */
+  private async resolveCategoryFilter(
+    tx: Db,
+    tenantId: string,
+    q: Pick<PublicProductQuery, "categoryId" | "categorySlug" | "subCategoryId" | "subCategorySlug">,
+  ): Promise<{ categoryId?: string; subCategoryId?: string; missing: boolean }> {
+    const wanted = [q.categorySlug, q.subCategorySlug].filter((s): s is string => Boolean(s));
+    let bySlug = new Map<string, string>();
+    if (wanted.length) {
+      const rows = await tx
+        .select({ id: categories.id, slug: categories.slug })
+        .from(categories)
+        .where(and(eq(categories.tenantId, tenantId), inArray(categories.slug, wanted)));
+      bySlug = new Map(rows.map((r) => [r.slug, r.id]));
+    }
+
+    const categoryId = q.categoryId ?? (q.categorySlug ? bySlug.get(q.categorySlug) : undefined);
+    const subCategoryId = q.subCategoryId ?? (q.subCategorySlug ? bySlug.get(q.subCategorySlug) : undefined);
+    const missing =
+      (Boolean(q.categorySlug) && !categoryId) || (Boolean(q.subCategorySlug) && !subCategoryId);
+
+    return { categoryId, subCategoryId, missing };
+  }
+
+  /** Every filter except paging and sort, shared by the list and its facets. */
+  private async catalogueFilters(tx: Db, tenantId: string, q: PublicProductQuery | PublicBrandQuery) {
+    const filters = [eq(products.tenantId, tenantId), eq(products.status, "active")];
+
+    const { categoryId, subCategoryId, missing } = await this.resolveCategoryFilter(tx, tenantId, q);
+    if (categoryId) filters.push(eq(products.categoryId, categoryId));
+    if (subCategoryId) filters.push(eq(products.subCategoryId, subCategoryId));
+
+    const full = q as PublicProductQuery;
+    if (full.q) {
+      const needle = `%${full.q}%`;
+      const match = or(
+        ilike(products.nameEn, needle),
+        ilike(products.slug, needle),
+        ilike(products.styleCode, needle),
+        ilike(brands.name, needle),
+      );
+      if (match) filters.push(match);
+    }
+    if (full.brandIds?.length) filters.push(inArray(products.brandId, full.brandIds));
+    if (full.brands?.length) filters.push(inArray(brands.name, full.brands));
+
+    // An offer price that isn't below the list price isn't an offer.
+    if (full.onSale) filters.push(sql`${products.offerPrice} is not null and ${products.offerPrice} < ${products.price}`);
+
+    // Exists rather than a join: a product can carry several badges, and
+    // joining would multiply its row and break both the count and the page.
+    if (full.badge) {
+      filters.push(
+        sql`exists (select 1 from ${productBadges} where ${productBadges.productId} = ${products.id} and ${productBadges.badge} = ${full.badge})`,
+      );
+    }
+
+    // Filter on what the shopper is actually charged, not the list price.
+    const effectivePrice = sql<number>`coalesce(${products.offerPrice}, ${products.price})`;
+    if (full.priceMin !== undefined) filters.push(gte(effectivePrice, full.priceMin));
+    if (full.priceMax !== undefined) filters.push(lte(effectivePrice, full.priceMax));
+
+    return { where: and(...filters), missing };
+  }
+
+  /**
+   * Which of these products can actually be bought.
+   *
+   * `stockMode: "always"` never runs out. Everything else is the sum of
+   * `on_hand - reserved` across the product's SKUs and warehouses —
+   * inventory_levels is the stock truth (see its comment in schema.ts);
+   * `products.stock` is a denormalised counter and is deliberately not read
+   * here.
+   */
+  private async inStockByProduct(tx: Db, tenantId: string, ids: string[]): Promise<Map<string, boolean>> {
+    if (!ids.length) return new Map();
+    const rows = await tx
+      .select({
+        productId: skus.productId,
+        available: sql<number>`coalesce(sum(${inventoryLevels.onHand} - ${inventoryLevels.reserved}), 0)`,
+      })
+      .from(skus)
+      .leftJoin(inventoryLevels, eq(inventoryLevels.skuId, skus.id))
+      .where(and(eq(skus.tenantId, tenantId), eq(skus.status, "active"), inArray(skus.productId, ids)))
+      .groupBy(skus.productId);
+    return new Map(rows.map((r) => [r.productId, Number(r.available) > 0]));
+  }
+
+  /**
+   * The social proof on a product card: star rating and units sold.
+   *
+   * Both were invented numbers in the storefront until now — stable per
+   * product, plausible, and untrue. These are the real figures.
+   *
+   * Only *approved* reviews count, for the same reason only approved ones are
+   * readable: moderation that the average ignores is not moderation. Sales
+   * exclude cancelled and failed orders, matching CrudService.isCancelled — a
+   * cancelled order returned its stock, so counting it as sold would be double
+   * counting in the shopper's favour.
+   *
+   * Two grouped queries for the whole page rather than per product; this runs
+   * on every catalogue listing.
+   */
+  private async socialProofByProduct(
+    tx: Db,
+    tenantId: string,
+    ids: string[],
+  ): Promise<Map<string, { rating: number | null; reviewCount: number; sold: number }>> {
+    const out = new Map<string, { rating: number | null; reviewCount: number; sold: number }>();
+    if (!ids.length) return out;
+
+    const [ratings, sales] = await Promise.all([
+      tx
+        .select({
+          productId: reviews.productId,
+          average: sql<number>`avg(${reviews.rating})`,
+          total: count(),
+        })
+        .from(reviews)
+        .where(
+          and(
+            eq(reviews.tenantId, tenantId),
+            eq(reviews.status, "approved"),
+            inArray(reviews.productId, ids),
+          ),
+        )
+        .groupBy(reviews.productId),
+      tx
+        .select({
+          productId: orderItems.productId,
+          units: sql<number>`coalesce(sum(${orderItems.qty}), 0)`,
+        })
+        .from(orderItems)
+        .innerJoin(orders, eq(orders.id, orderItems.orderId))
+        .where(
+          and(
+            eq(orderItems.tenantId, tenantId),
+            inArray(orderItems.productId, ids),
+            notInArray(sql`lower(${orders.deliveryStatus})`, ["cancelled", "canceled", "failed"]),
+          ),
+        )
+        .groupBy(orderItems.productId),
+    ]);
+
+    for (const id of ids) out.set(id, { rating: null, reviewCount: 0, sold: 0 });
+    for (const r of ratings) {
+      if (!r.productId) continue;
+      const entry = out.get(r.productId);
+      if (entry) {
+        entry.rating = Math.round(Number(r.average) * 10) / 10;
+        entry.reviewCount = r.total;
+      }
+    }
+    for (const s of sales) {
+      if (!s.productId) continue;
+      const entry = out.get(s.productId);
+      if (entry) entry.sold = Number(s.units);
+    }
+    return out;
+  }
+
+  /** Badge labels for a page of products, in their authored order. */
+  private async badgesByProduct(tx: Db, tenantId: string, ids: string[]): Promise<Map<string, string[]>> {
+    if (!ids.length) return new Map();
+    const rows = await tx
+      .select({ productId: productBadges.productId, badge: productBadges.badge })
+      .from(productBadges)
+      .where(and(eq(productBadges.tenantId, tenantId), inArray(productBadges.productId, ids)))
+      .orderBy(asc(productBadges.sort));
+    const out = new Map<string, string[]>();
+    for (const r of rows) out.set(r.productId, [...(out.get(r.productId) ?? []), r.badge]);
+    return out;
+  }
+
+  /** The columns every product DTO starts from, card and detail alike. */
+  private cardColumns() {
+    return {
+      id: products.id,
+      name: products.nameEn,
+      slug: products.slug,
+      price: products.price,
+      offerPrice: products.offerPrice,
+      imageUrl: products.imageUrl,
+      stockMode: products.stockMode,
+      brand: brands.name,
+      categoryName: categories.nameEn,
+      categorySlug: categories.slug,
+    };
+  }
+
+  /**
+   * Catalogue listing: the storefront's category, search and grid pages.
    *
    * Only `active` products — a draft is as private as an unpublished page.
-   * Returns a hand-built DTO rather than the row: products carry cost-side and
+   * Every filter, sort and page is applied in SQL: the storefront must never
+   * have to pull the catalogue down to filter it in memory, and `pageSize` is
+   * capped because this route is anonymous.
+   *
+   * Returns hand-built DTOs rather than rows: products carry cost-side and
    * internal fields (stock, sellerId, styleCode) that must never reach a
    * shopper.
    */
-  async publicProducts(
-    slug: string,
-    opts: { categoryId?: string; limit?: number },
-  ): Promise<PublicProductDto[]> {
+  async publicProducts(slug: string, q: PublicProductQuery): Promise<PublicProductListDto> {
     const { tenant } = await this.assertLive(slug);
-    const limit = Math.min(24, Math.max(1, opts.limit ?? 8));
+    const empty: PublicProductListDto = { items: [], total: 0, page: q.page, pageSize: q.pageSize };
+
     return this.tdb.forTenant(tenant.id, async (tx) => {
-      const filters = [eq(products.tenantId, tenant.id), eq(products.status, "active")];
-      if (opts.categoryId) filters.push(eq(products.categoryId, opts.categoryId));
-      const rows = await tx
+      const { where, missing } = await this.catalogueFilters(tx, tenant.id, q);
+      if (missing) return empty;
+
+      // Joined for both filtering (brand name / category slug) and the DTO, so
+      // the count has to see the same joins to stay consistent with the page.
+      const scoped = tx
+        .select(this.cardColumns())
+        .from(products)
+        .leftJoin(brands, eq(brands.id, products.brandId))
+        .leftJoin(categories, eq(categories.id, products.categoryId))
+        .where(where);
+
+      const [{ value: total }] = await tx
+        .select({ value: count() })
+        .from(products)
+        .leftJoin(brands, eq(brands.id, products.brandId))
+        .leftJoin(categories, eq(categories.id, products.categoryId))
+        .where(where);
+
+      const effectivePrice = sql`coalesce(${products.offerPrice}, ${products.price})`;
+      // Percentage off, not absolute — a ৳500 saving on a phone is not the
+      // deal a ৳500 saving on a mouse is. Undiscounted rows sort to 0.
+      const discount = sql`case when ${products.offerPrice} is null or ${products.price} = 0 then 0
+        else (${products.price} - ${products.offerPrice}) / ${products.price} end`;
+      const order =
+        q.sort === "lo"
+          ? asc(effectivePrice)
+          : q.sort === "hi"
+            ? desc(effectivePrice)
+            : q.sort === "discount"
+              ? desc(discount)
+              : desc(products.createdAt);
+
+      const rows = await scoped
+        .orderBy(order, asc(products.id))
+        .limit(q.pageSize)
+        .offset((q.page - 1) * q.pageSize);
+
+      const ids = rows.map((r) => r.id);
+      const [badges, stock, social] = await Promise.all([
+        this.badgesByProduct(tx, tenant.id, ids),
+        this.inStockByProduct(tx, tenant.id, ids),
+        this.socialProofByProduct(tx, tenant.id, ids),
+      ]);
+
+      return {
+        items: rows.map(({ stockMode, ...r }) => ({
+          ...r,
+          badges: badges.get(r.id) ?? [],
+          inStock: stockMode === "always" || (stock.get(r.id) ?? false),
+          ...(social.get(r.id) ?? { rating: null, reviewCount: 0, sold: 0 }),
+        })),
+        total,
+        page: q.page,
+        pageSize: q.pageSize,
+      };
+    });
+  }
+
+  /**
+   * One product, by its slug. Drafts are 404s, never 403s — same reasoning as
+   * unpublished pages.
+   */
+  async publicProduct(slug: string, productSlug: string): Promise<PublicProductDetailDto> {
+    const { tenant } = await this.assertLive(slug);
+    return this.tdb.forTenant(tenant.id, async (tx) => {
+      const sub = alias(categories, "sub_category");
+      const [row] = await tx
         .select({
-          id: products.id,
-          name: products.nameEn,
-          slug: products.slug,
-          price: products.price,
-          offerPrice: products.offerPrice,
-          imageUrl: products.imageUrl,
+          ...this.cardColumns(),
+          shortDescription: products.shortDescEn,
+          description: products.descriptionEn,
+          videoUrl: products.videoUrl,
+          unit: products.unit,
+          minOrderQty: products.minOrderQty,
+          maxOrderQty: products.maxOrderQty,
+          subCategoryName: sub.nameEn,
+          subCategorySlug: sub.slug,
         })
         .from(products)
-        .where(and(...filters))
-        .orderBy(desc(products.createdAt))
-        .limit(limit);
-      return rows;
+        .leftJoin(brands, eq(brands.id, products.brandId))
+        .leftJoin(categories, eq(categories.id, products.categoryId))
+        .leftJoin(sub, eq(sub.id, products.subCategoryId))
+        .where(
+          and(
+            eq(products.tenantId, tenant.id),
+            eq(products.slug, productSlug),
+            eq(products.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (!row) throw new NotFoundException("Product not found");
+
+      const ids = [row.id];
+      const [images, specs, tags, variants, tiers, badges, stock, social] = await Promise.all([
+        tx
+          .select({ url: productImages.url })
+          .from(productImages)
+          .where(and(eq(productImages.tenantId, tenant.id), eq(productImages.productId, row.id)))
+          .orderBy(asc(productImages.sort)),
+        tx
+          .select({ label: productSpecs.label, value: productSpecs.value })
+          .from(productSpecs)
+          .where(and(eq(productSpecs.tenantId, tenant.id), eq(productSpecs.productId, row.id)))
+          .orderBy(asc(productSpecs.sort)),
+        tx
+          .select({ tag: productTags.tag })
+          .from(productTags)
+          .where(and(eq(productTags.tenantId, tenant.id), eq(productTags.productId, row.id)))
+          .orderBy(asc(productTags.sort)),
+        tx
+          .select({
+            id: productVariants.id,
+            label: productVariants.label,
+            type: productVariants.type,
+            price: productVariants.price,
+            originalPrice: productVariants.originalPrice,
+            badge: productVariants.badge,
+          })
+          .from(productVariants)
+          .where(and(eq(productVariants.tenantId, tenant.id), eq(productVariants.productId, row.id)))
+          .orderBy(asc(productVariants.sort)),
+        tx
+          .select({ minQty: productPricingTiers.minQty, unitPrice: productPricingTiers.unitPrice })
+          .from(productPricingTiers)
+          .where(
+            and(eq(productPricingTiers.tenantId, tenant.id), eq(productPricingTiers.productId, row.id)),
+          )
+          .orderBy(asc(productPricingTiers.minQty)),
+        this.badgesByProduct(tx, tenant.id, ids),
+        this.inStockByProduct(tx, tenant.id, ids),
+        this.socialProofByProduct(tx, tenant.id, ids),
+      ]);
+
+      const { stockMode, ...card } = row;
+      return {
+        ...card,
+        badges: badges.get(row.id) ?? [],
+        inStock: stockMode === "always" || (stock.get(row.id) ?? false),
+        ...(social.get(row.id) ?? { rating: null, reviewCount: 0, sold: 0 }),
+        images: images.map((i) => i.url),
+        specs,
+        tags: tags.map((t) => t.tag),
+        variants,
+        pricingTiers: tiers,
+      };
+    });
+  }
+
+  /**
+   * The category tree, for menus, footers and static params.
+   *
+   * Flat and parent-linked rather than nested: the storefront's mega-menu,
+   * category bar and sidebar each want a different shape, and one of them
+   * would have to un-nest it again.
+   */
+  async publicCategories(slug: string): Promise<PublicCategoryDto[]> {
+    const { tenant } = await this.assertLive(slug);
+    return this.tdb.forTenant(tenant.id, async (tx) => {
+      const rows = await tx
+        .select({
+          id: categories.id,
+          name: categories.nameEn,
+          slug: categories.slug,
+          parentId: categories.parentId,
+          level: categories.level,
+        })
+        .from(categories)
+        .where(and(eq(categories.tenantId, tenant.id), eq(categories.active, true)))
+        .orderBy(asc(categories.level), asc(categories.nameEn));
+
+      // One grouped pass rather than a count per category — 18 categories is
+      // 18 round trips otherwise, on a route every page in the site calls.
+      const counts = await tx
+        .select({ categoryId: products.categoryId, value: count() })
+        .from(products)
+        .where(and(eq(products.tenantId, tenant.id), eq(products.status, "active")))
+        .groupBy(products.categoryId);
+      const byCategory = new Map(counts.map((c) => [c.categoryId, c.value]));
+
+      return rows.map((r) => ({ ...r, productCount: byCategory.get(r.id) ?? 0 }));
+    });
+  }
+
+  /**
+   * Brand facet counts, scoped to whatever category is being browsed.
+   *
+   * Counted over the same active-product filter as the listing, so a facet can
+   * never offer a brand that would return nothing.
+   */
+  async publicBrands(slug: string, q: PublicBrandQuery): Promise<PublicBrandDto[]> {
+    const { tenant } = await this.assertLive(slug);
+    return this.tdb.forTenant(tenant.id, async (tx) => {
+      const { where, missing } = await this.catalogueFilters(tx, tenant.id, q);
+      if (missing) return [];
+      return tx
+        .select({ id: brands.id, name: brands.name, productCount: count(products.id) })
+        .from(products)
+        .innerJoin(brands, eq(brands.id, products.brandId))
+        .leftJoin(categories, eq(categories.id, products.categoryId))
+        .where(where)
+        .groupBy(brands.id, brands.name)
+        .orderBy(asc(brands.name));
+    });
+  }
+
+  /**
+   * Approved reviews for one product. Pending and rejected are invisible —
+   * moderation would be pointless otherwise.
+   */
+  async publicReviews(slug: string, productSlug: string): Promise<PublicReviewDto[]> {
+    const { tenant } = await this.assertLive(slug);
+    return this.tdb.forTenant(tenant.id, async (tx) => {
+      const [product] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(
+          and(
+            eq(products.tenantId, tenant.id),
+            eq(products.slug, productSlug),
+            eq(products.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (!product) throw new NotFoundException("Product not found");
+
+      return tx
+        .select({
+          id: reviews.id,
+          author: reviews.author,
+          rating: reviews.rating,
+          comment: reviews.comment,
+          createdAt: reviews.createdAt,
+        })
+        .from(reviews)
+        .where(
+          and(
+            eq(reviews.tenantId, tenant.id),
+            eq(reviews.productId, product.id),
+            eq(reviews.status, "approved"),
+          ),
+        )
+        .orderBy(desc(reviews.createdAt));
     });
   }
 

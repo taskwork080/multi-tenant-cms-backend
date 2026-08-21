@@ -9,6 +9,7 @@ import { TenantDb } from "../db/tenant-db.service";
 import { FulfilmentService } from "../inventory/fulfilment.service";
 import { InventoryService } from "../inventory/inventory.service";
 import type { TenantDto } from "../tenant/tenant.service";
+import { nextOrderCode } from "../workflows/order-code";
 import { AnyTable, ChildDef, RESOURCES, ResourceDef } from "./resource-registry";
 
 /** Which half of a ResourceDef's capabilities a call needs. */
@@ -224,6 +225,15 @@ export class CrudService {
     const { values, childInputs } = this.split(def, body);
     values.tenantId = tenant.id;
     return this.tdb.forTenant(tenant.id, async (tx) => {
+      // Order codes are allocated here, not by the caller. The admin used to
+      // send `ORD-${Math.random()}` from the browser — 9000 values against the
+      // (tenant, code) unique index, which collides at around a hundred orders
+      // and surfaces as a constraint error the operator cannot act on. Only
+      // filled in when absent, so an explicitly supplied code still wins.
+      if (def.reservesStock && !values.code) {
+        values.code = await nextOrderCode(tx, tenant.id);
+      }
+
       const [row] = await tx.insert(def.table).values(values as never).returning();
       await this.writeChildren(tx, tenant.id, def.children ?? [], (row as Row).id as string, childInputs);
 

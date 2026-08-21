@@ -7,6 +7,7 @@ import { json, urlencoded } from "express";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { PgExceptionFilter } from "./pg-exception.filter";
+import { StorefrontService } from "./storefront/storefront.service";
 import { ZodExceptionFilter } from "./zod-exception.filter";
 import { docsEnabled } from "./config/env.validation";
 
@@ -30,8 +31,26 @@ async function bootstrap() {
   // nested object. Flat keys parse identically either way, so this is additive.
   app.set("query parser", "extended");
 
+  // The admin's origins are known at boot; a tenant's storefront domain is not
+  // — tenants add custom domains at runtime, and a storefront whose checkout is
+  // blocked by CORS is a storefront that cannot take an order. So the static
+  // list is checked first and StorefrontService decides the rest, on exactly
+  // the terms it serves the storefront itself (live tenant, module entitled).
+  //
+  // A missing Origin (server-to-server, curl, same-origin) is allowed through:
+  // CORS only ever governs browsers.
   const origins = (process.env.CORS_ORIGIN ?? "http://localhost:5000").split(",").map((o) => o.trim());
-  app.enableCors({ origin: origins, credentials: true });
+  const storefront = app.get(StorefrontService, { strict: false });
+  app.enableCors({
+    credentials: true,
+    origin: (origin, callback) => {
+      if (!origin || origins.includes(origin)) return callback(null, true);
+      storefront
+        .isLiveOrigin(origin)
+        .then((allowed) => callback(null, allowed))
+        .catch(() => callback(null, false));
+    },
+  });
   // This is a JSON API with no server-rendered HTML of its own, so the default
   // helmet set applies cleanly. CSP is left off: the only HTML served is
   // Swagger's, which needs inline scripts, and it is gated below.

@@ -15,6 +15,7 @@
     "db:reset-users": "ts-node -T -r tsconfig-paths/register scripts/reset-users.ts",
     "db:backfill": "ts-node -r tsconfig-paths/register scripts/backfill-rbac.ts",
     "user:create": "ts-node -T -r tsconfig-paths/register scripts/create-user.ts",
+    "import:365": "ts-node -T -r tsconfig-paths/register scripts/import-365.ts",
     "roles:audit": "ts-node -r tsconfig-paths/register scripts/audit-roles.ts",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
