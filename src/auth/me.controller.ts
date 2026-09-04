@@ -1,7 +1,7 @@
 import { Controller, Get } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { TenantService, type TenantDto } from "../tenant/tenant.service";
-import { CurrentAccess, CurrentUser } from "./decorators";
+import { AllowsPendingPassword, CurrentAccess, CurrentUser } from "./decorators";
 import { PLATFORM_ADMIN, type AuthUser } from "./auth.types";
 import type { UserAccess } from "./access.service";
 
@@ -24,6 +24,9 @@ export class MeController {
   constructor(private readonly tenants: TenantService) {}
 
   @Get()
+  // Reachable with a pending forced password change: this response carries the
+  // flag itself, and the client cannot route anyone anywhere without it.
+  @AllowsPendingPassword()
   @ApiOperation({ summary: "Current user, their tenant(s), and their resolved access" })
   async me(@CurrentUser() user: AuthUser, @CurrentAccess() access: UserAccess): Promise<MeResponse> {
     if (user.role === PLATFORM_ADMIN) {

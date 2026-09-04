@@ -8,6 +8,7 @@ import {
   Post,
   Query,
 } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -15,7 +16,7 @@ import { authEvents, roles, staffUsers, tenants } from "../db/schema";
 import { TenantDb } from "../db/tenant-db.service";
 import { AccessService, type UserAccess } from "./access.service";
 import { CAPABILITIES } from "./capabilities";
-import { CurrentAccess, CurrentUser } from "./decorators";
+import { AllowsPendingPassword, CurrentAccess, CurrentUser } from "./decorators";
 import { PLATFORM_ADMIN, type AuthUser } from "./auth.types";
 import { SupabaseAdminService } from "./supabase-admin.service";
 
@@ -422,6 +423,13 @@ export class ProfileController {
   }
 
   @Post("password")
+  // The one way out of a forced password change, so it has to stay reachable
+  // while the flag is set — AccessGuard 403s everything else.
+  @AllowsPendingPassword()
+  // Every call is a real GoTrue password grant (SupabaseAdminService
+  // .verifyPassword), so without this the global 300/min ceiling would allow
+  // that many credential guesses a minute against a known account.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({
     summary: "Change your own password",
     description:

@@ -1,4 +1,4 @@
-import { ForbiddenException } from "@nestjs/common";
+import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { describe, expect, it, vi } from "vitest";
 import { adminUserCreateSchema, resetPasswordSchema } from "./dto";
 import { PlatformUsersService } from "./platform-users.service";
@@ -166,6 +166,55 @@ describe("create — a password an admin chooses is temporary", () => {
     const { svc, supabase } = forCreate();
     await svc.create({ ...base, password: "Seed1234", mustChangePassword: false }, CTX as never);
     expect(metaSentToCreateUser(supabase).must_change_password).toBe(false);
+  });
+});
+
+describe("create — a failed adopt must not leave the account rewritten", () => {
+  const base = { tenantId: TENANT_ID, name: "A", email: "a@x.test" };
+
+  /**
+   * Adopting means writing a password and a role onto an identity that already
+   * existed. If the staff insert then fails, deleting it would be wrong (it
+   * pre-dated the request) but leaving it as-is is worse: a live account would
+   * be left holding the admin's temporary password under whatever role and
+   * tenant this request asked for.
+   */
+  const forAdopt = () => {
+    const made = makeService({
+      queue: [[{ id: TENANT_ID, slug: "acme", name: "Acme" }], [], [{ id: "s1", email: "a@x.test", name: "A" }]],
+    });
+    made.svc.assertRoleInTenant = vi.fn(async () => undefined);
+    made.svc.writeTenantActivity = vi.fn(async () => undefined);
+    made.supabase.createUser = vi.fn(async () => {
+      throw new ConflictException("already registered");
+    });
+    made.supabase.findByEmail = vi.fn(async () => ({
+      id: "auth-1",
+      app_metadata: { role: "owner", tenant_id: TENANT_ID, must_change_password: false },
+    })) as never;
+    // Fail the DB half, after the GoTrue write has already happened.
+    made.audit.record = vi.fn(async () => {
+      throw new Error("insert failed");
+    });
+    return made;
+  };
+
+  it("restores the previous app_metadata and does not delete the account", async () => {
+    const { svc, supabase } = forAdopt();
+    await expect(svc.create({ ...base, password: "Temp1234" }, CTX as never)).rejects.toThrow("insert failed");
+
+    // Never: the identity is someone else's, and it existed before this request.
+    expect(supabase.deleteUser).not.toHaveBeenCalled();
+
+    const calls = supabase.updateUserById.mock.calls as unknown as [string, Record<string, unknown>][];
+    expect(calls).toHaveLength(2);
+    // First the adopt, then the rollback.
+    expect(metaOf(calls[0][1]).must_change_password).toBe(true);
+    expect(calls[1][1].app_metadata).toEqual({
+      role: "owner",
+      tenant_id: TENANT_ID,
+      must_change_password: false,
+    });
   });
 });
 

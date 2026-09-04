@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from "@
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
 import { AccessService, BYPASS_ACCESS, type UserAccess } from "./access.service";
-import { IS_PUBLIC } from "./decorators";
+import { ALLOWS_PENDING_PASSWORD, IS_PUBLIC } from "./decorators";
 import type { AuthUser } from "./auth.types";
 
 /**
@@ -35,6 +35,29 @@ export class AccessGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<Request & { user?: AuthUser; access?: UserAccess }>();
     const user = req.user;
     if (!user) return true; // AuthGuard already let this through (dev bypass); nothing to resolve.
+
+    // A password an administrator issued is a credential two people know. Until
+    // it is replaced, this session may read its own identity and change its own
+    // password, and nothing else.
+    //
+    // It has to be enforced here rather than in the client gates, which is where
+    // it used to live alone. The flag travels in the JWT, so issuing a temporary
+    // password to someone already signed in changed nothing until their token
+    // expired; and PlatformGate never checked it at all, so a deep link to
+    // /platform/* handed over the whole super-admin surface. A guard binds on the
+    // next request either way.
+    if (
+      user.mustChangePassword &&
+      !this.reflector.getAllAndOverride<boolean>(ALLOWS_PENDING_PASSWORD, [
+        context.getHandler(),
+        context.getClass(),
+      ])
+    ) {
+      throw new ForbiddenException({
+        message: "Set your own password before continuing.",
+        code: "MUST_CHANGE_PASSWORD",
+      });
+    }
 
     const access = await this.access.forUser(user);
 

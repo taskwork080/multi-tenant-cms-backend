@@ -260,6 +260,13 @@ export class PlatformUsersService {
 
     let authUser: AdminAuthUser;
     let adopted = false;
+    // What an adopted identity looked like before we touched it, so the
+    // compensation below can put it back. Deleting an adopted account is never
+    // right — it pre-existed this request — but leaving it rewritten is not
+    // either: a failed create would otherwise strand a live account holding the
+    // admin's temporary password, under whatever role and tenant this request
+    // asked for.
+    let adoptedMetadata: Record<string, unknown> | undefined;
     try {
       authUser = await this.supabase.createUser({
         email: input.email,
@@ -280,6 +287,7 @@ export class PlatformUsersService {
       // The password has to be applied here too. createUser rejected outright,
       // so the identity kept whatever password it already had — adopting it
       // without this hands the admin a temporary password that does not work.
+      adoptedMetadata = found.app_metadata ?? {};
       await this.supabase.updateUserById(found.id, {
         app_metadata: appMetadata,
         ...(input.password ? { password: input.password, email_confirm: true } : {}),
@@ -315,6 +323,26 @@ export class PlatformUsersService {
     } catch (err) {
       // Compensation: never leave an auth identity nobody can reach. Only undo
       // what we created — an adopted user pre-existed this request.
+      if (adopted && adoptedMetadata) {
+        // Restore the role/tenant we overwrote. The password cannot be put back
+        // (GoTrue stores only the hash), so say so plainly — an operator has to
+        // know that account's credentials changed even though the create failed.
+        try {
+          await this.supabase.updateUserById(authUser.id, { app_metadata: adoptedMetadata });
+        } catch (restoreErr) {
+          this.log.error(
+            `ADOPTED AUTH USER ${authUser.id} (${input.email}) LEFT REWRITTEN: staff insert failed ` +
+              `(${(err as Error).message}) and restoring its app_metadata also failed ` +
+              `(${(restoreErr as Error).message})`,
+          );
+        }
+        if (input.password) {
+          this.log.warn(
+            `Adopted auth user ${authUser.id} (${input.email}) kept the password set by this failed create; ` +
+              `its previous password no longer works. Issue a fresh reset before retrying.`,
+          );
+        }
+      }
       if (!adopted) {
         try {
           await this.supabase.deleteUser(authUser.id);
