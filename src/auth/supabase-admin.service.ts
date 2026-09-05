@@ -86,6 +86,16 @@ export class SupabaseAdminService implements OnModuleInit {
         "SUPABASE_SERVICE_ROLE_KEY is not set — /api/admin/* user management (create, reset password, suspend) will fail until it is.",
       );
     }
+    // Separate key, separate failure: verifyPassword deliberately uses the
+    // publishable one (see there), so without it EVERY password change 503s —
+    // including the forced change a user issued a temporary password has to
+    // complete to reach the app at all. Worth naming at boot rather than
+    // discovering when someone is locked out.
+    if (!this.publishableKey) {
+      this.log.warn(
+        "SUPABASE_PUBLISHABLE_KEY is not set — POST /api/me/password will fail for every user until it is.",
+      );
+    }
   }
 
   /** Fail with an operator-readable message rather than a confusing 401. */
