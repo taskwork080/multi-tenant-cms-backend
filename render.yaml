@@ -11,7 +11,11 @@ services:
     # idle, which would stall the @nestjs/schedule cron jobs (reservation expiry
     # every 10 min, promo status hourly) and drop Socket.IO connections.
     plan: starter
-    region: oregon # pick the region nearest the Supabase project
+    # Must match the Supabase project's region (ap-southeast-1). Every request
+    # makes several round trips to Postgres, so a cross-region pair adds ~200ms
+    # to each one. Users are in Bangladesh — see the phone validation in
+    # src/storefront/checkout.schemas.ts.
+    region: singapore
     branch: main
     autoDeploy: true
     # Keep at 1. The Socket.IO gateway has no Redis adapter, the throttler

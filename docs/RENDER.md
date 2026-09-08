@@ -37,6 +37,13 @@ limits, and splits realtime rooms. Scale the instance up, not out.
 ## 1. Supabase production project
 
 1. Create a **separate** project for production. Never share a database with development.
+   Choose region **Southeast Asia (Singapore) `ap-southeast-1`** and keep `render.yaml`'s `region` on
+   `singapore` to match. Users are in Bangladesh (see the phone validation in
+   [`src/storefront/checkout.schemas.ts`](../src/storefront/checkout.schemas.ts)), every request makes
+   several round trips to Postgres, and **a Supabase region cannot be changed after creation** — it is the
+   one decision here with no cheap fix.
+   Save the generated database password immediately; it is shown once, and resetting it later breaks every
+   live connection string.
 2. Dashboard → **Connect** → copy the **Session Pooler** string. Note the username form is
    `<role>.<project-ref>` — so `postgres.abcdefghijkl`, and after step 3, `app_api.abcdefghijkl`.
 3. Copy `SUPABASE_URL` (`https://<ref>.supabase.co`), the publishable/anon key, and the service-role key.
