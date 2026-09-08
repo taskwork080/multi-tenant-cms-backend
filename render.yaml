@@ -1,0 +1,74 @@
+# Render Blueprint — see docs/RENDER.md for the full setup order.
+#
+# Create with: Render dashboard > New > Blueprint > this repo.
+# Every `sync: false` value is entered in the dashboard and never committed.
+
+services:
+  - type: web
+    name: multi-tenant-cms-api
+    runtime: node
+    # NOT free. The free instance type has no pre-deploy command and sleeps on
+    # idle, which would stall the @nestjs/schedule cron jobs (reservation expiry
+    # every 10 min, promo status hourly) and drop Socket.IO connections.
+    plan: starter
+    region: oregon # pick the region nearest the Supabase project
+    branch: main
+    autoDeploy: true
+    # Keep at 1. The Socket.IO gateway has no Redis adapter, the throttler
+    # stores counts in memory, and the cron jobs are not leader-gated — a second
+    # instance duplicates cron work, multiplies rate limits, and splits realtime
+    # rooms. Scale vertically first.
+    numInstances: 1
+
+    buildCommand: npm ci && npm run build
+    # Migrations run here, not in startCommand: a failed migration in the start
+    # command crash-loops the service on every boot, while a failed pre-deploy
+    # aborts the deploy and leaves the previous version serving.
+    preDeployCommand: npm run db:migrate:prod
+    startCommand: node dist/src/main
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_DEV_BYPASS
+        value: "false"
+      - key: PLATFORM_ALLOW_PASSWORD_SET
+        value: "false"
+      - key: PLATFORM_IMPERSONATION_ALLOW_WRITES
+        value: "false"
+      - key: R2_BUCKET
+        value: cms-assets
+      # PORT is intentionally absent — Render injects it and src/main.ts reads it.
+      # ENABLE_DOCS is intentionally absent — unset means Swagger is off in
+      # production, and it is unauthenticated by construction.
+
+      # --- Set in the dashboard --------------------------------------------
+      # Postgres must be the Supabase *pooler* host (aws-*.pooler.supabase.com):
+      # db.<ref>.supabase.co is IPv6-only and Render's egress is IPv4.
+      - key: DATABASE_URL # runtime: the app_api role, DML only
+        sync: false
+      - key: MIGRATE_DATABASE_URL # migrations: the owner (postgres) role
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY # server-only; never mirror to NEXT_PUBLIC_*
+        sync: false
+      - key: CORS_ORIGIN # exact scheme, no trailing slash
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: STOREFRONT_ROOT_DOMAIN
+        sync: false
+      - key: R2_ACCOUNT_ID # the R2 trio is all-or-nothing
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false

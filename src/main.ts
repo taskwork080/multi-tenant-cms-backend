@@ -73,8 +73,11 @@ async function bootstrap() {
   // opts in with ENABLE_DOCS=true.
   if (!docsEnabled({ NODE_ENV: process.env.NODE_ENV ?? "development", ENABLE_DOCS: process.env.ENABLE_DOCS })) {
     const port = parseInt(process.env.PORT ?? "4000", 10);
-    await app.listen(port);
-    new Logger("Bootstrap").log(`API listening on http://localhost:${port} (health: /health, docs disabled)`);
+    // 0.0.0.0 explicitly: a container's health check reaches the process over
+    // the container network, not loopback, and a host that only ever sees a
+    // listener on 127.0.0.1 reports the deploy as failed to start.
+    await app.listen(port, "0.0.0.0");
+    new Logger("Bootstrap").log(`API listening on 0.0.0.0:${port} (health: /health, docs disabled)`);
     return;
   }
 
@@ -95,8 +98,8 @@ async function bootstrap() {
   });
 
   const port = parseInt(process.env.PORT ?? "4000", 10);
-  await app.listen(port);
-  new Logger("Bootstrap").log(`API listening on http://localhost:${port} (health: /health, docs: /docs)`);
+  await app.listen(port, "0.0.0.0");
+  new Logger("Bootstrap").log(`API listening on 0.0.0.0:${port} (health: /health, docs: /docs)`);
 }
 
 bootstrap();
