@@ -56,6 +56,12 @@ npx -y npm@10 ci --dry-run
 
 If it fails, `npx -y npm@10 install --package-lock-only` rewrites the lock so both versions accept it.
 
+**The build sees `NODE_ENV=production` too.** Render passes the service's env vars to the build, and under
+`NODE_ENV=production` `npm ci` skips devDependencies — including `@nestjs/cli` and `typescript`, which the
+build needs. That is why `buildCommand` uses `npm ci --include=dev`; without it the install succeeds and
+the build fails with `nest: not found` (the second failed deploy). To reproduce Render's build locally:
+`NODE_ENV=production npx -y npm@10 ci --include=dev && npm run build`.
+
 ---
 
 ## 1. Supabase production project

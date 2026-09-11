@@ -34,7 +34,12 @@ services:
     # Never put them in startCommand — a failed migration there crash-loops the
     # service on every boot. They come after `npm run build` because they run
     # the compiled dist/scripts/migrate.js.
-    buildCommand: npm ci && npm run build && npm run db:migrate:prod
+    #
+    # --include=dev is required, not optional: Render passes NODE_ENV=production
+    # (below) to the build as well, and under it `npm ci` silently skips
+    # devDependencies — @nestjs/cli and typescript, which `npm run build` needs.
+    # Without the flag the install succeeds and the build dies on `nest: not found`.
+    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate:prod
     startCommand: node dist/src/main
     healthCheckPath: /health
 
