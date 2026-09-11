@@ -71,14 +71,35 @@ any new migration, pick a `when` above the higher of the two.
 
 ## 3. Switch to the non-bypass role
 
-Follow the steps in [`drizzle/0011_app_api_role.sql`](../drizzle/0011_app_api_role.sql) to set a password
-on `app_api`. Until this is done RLS is inert — `postgres` has `rolbypassrls`, so the only tenant boundary
-is the `WHERE tenant_id = ...` clauses in application code, and one forgotten clause is a cross-tenant
-leak. Verify it took before going further:
+Set a password on `app_api` (created by [`drizzle/0011_app_api_role.sql`](../drizzle/0011_app_api_role.sql))
+in the SQL editor. Use letters and digits only, about 32 characters: no URL-encoding in the connection
+string, no quote-escaping in SQL, nothing the shell can misread. Then delete that query from the editor,
+which keeps it as a saved snippet otherwise.
 
 ```sql
--- connected as app_api, with no tenant set
-select count(*) from products;                              -- must be 0
+alter role app_api with password '<letters-and-digits>';
+```
+
+Until the API runs as `app_api`, RLS is inert — `postgres` has `rolbypassrls`, so the only tenant boundary
+is the `WHERE tenant_id = ...` clauses in application code, and one forgotten clause is a cross-tenant
+leak. On the development database, a connection as `postgres` with a *random* `app.tenant_id` still sees
+every product.
+
+Note the pooler username is `app_api.<project-ref>`, not `app_api` as the comment in 0011 shows — the
+pooler routes on that suffix and rejects the bare role name.
+
+**Verify the role before pointing anything at it.** Log in as `app_api` through the pooler and confirm:
+it does not bypass RLS; a `select` on `tenants`, and on `products` with `app.tenant_id` set, both succeed;
+`alter table ... disable row level security` is refused (no ownership); and `public.platform_admin_count`
+is readable. [`0016_tenant_id_without_auth_schema.sql`](../drizzle/0016_tenant_id_without_auth_schema.sql)
+exists because the reads failed here with `permission denied for schema auth` — every tenant query would
+have failed in production.
+
+**The behavioural isolation check needs data, so it runs after step 7**, not here. On an empty database
+`select count(*) from products` returns 0 whether RLS works or not. Once real tenants exist, as `app_api`:
+
+```sql
+select count(*) from products;                              -- no tenant set: must be 0
 select set_config('app.tenant_id', '<a-tenant-uuid>', false);
 select count(*) from products;                              -- only that tenant's rows
 ```
