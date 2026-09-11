@@ -43,6 +43,19 @@ carries the owner (`postgres`) string for `scripts/migrate.ts` alone. Nothing in
 `@nestjs/schedule` cron jobs are not leader-gated. A second instance duplicates cron work, multiplies rate
 limits, and splits realtime rooms. Scale the instance up, not out.
 
+**Render's npm is not necessarily yours.** Render installs the Node version in `.nvmrc` and uses the npm
+bundled with it — npm 10 for Node 22 — while a local machine may run npm 11. The two validate lockfiles
+differently: npm 10 rejects a lock that leaves an *optional* peer dependency installed at an out-of-range
+version, and npm 11 accepts it. The first deploy failed exactly this way (`npm ci` → `Missing:
+esbuild@0.28.2 from lock file`, from vitest's nested vite). After any dependency change, check the lock the
+way Render will before pushing:
+
+```bash
+npx -y npm@10 ci --dry-run
+```
+
+If it fails, `npx -y npm@10 install --package-lock-only` rewrites the lock so both versions accept it.
+
 ---
 
 ## 1. Supabase production project
