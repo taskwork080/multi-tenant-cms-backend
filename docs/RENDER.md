@@ -19,9 +19,20 @@ with `ENETUNREACH` or a DNS error that looks like a credentials problem. Use the
 (`aws-<n>.pooler.supabase.com:5432`). The driver is already pooler-safe: `prepare: false, max: 10` in
 [`src/db/db.module.ts`](../src/db/db.module.ts).
 
-**Migrations run as a pre-deploy step, never in the start command.** In the start command a failed
-migration crash-loops the service on every boot, taking the previous working version down with it. As
-Render's `preDeployCommand`, a failure aborts the deploy and the old version keeps serving.
+**Migrations run before the new version starts, never in the start command.** In the start command a
+failed migration crash-loops the service on every boot, taking the previous working version down with it.
+Run before start, a failure aborts the deploy and the old version keeps serving.
+
+On the **free** plan (current) they run at the end of `buildCommand`, because free has no
+`preDeployCommand`; Render passes the service's env vars to the build, so `MIGRATE_DATABASE_URL` is there.
+On **starter** and above, move them to `preDeployCommand` — Render's dedicated step for this, which also
+keeps a rebuild from touching the database.
+
+**Free plan limits.** The service sleeps after ~15 minutes idle. While asleep the `@nestjs/schedule` jobs in
+[`src/maintenance/maintenance.service.ts`](../src/maintenance/maintenance.service.ts) (reservation expiry
+every 10 minutes, promo status hourly) do not run, Socket.IO clients are disconnected, and the first
+request back takes ~50 seconds. Fine for a trial; switch the instance type to Starter before real tenants
+depend on it.
 
 **Two database roles.** `DATABASE_URL` is the `app_api` role from
 [`drizzle/0011_app_api_role.sql`](../drizzle/0011_app_api_role.sql) — `NOBYPASSRLS` and DML-only, so RLS
@@ -167,8 +178,9 @@ curl -i https://api.yourdomain.com/docs     # 404 — Swagger is off in producti
   when the `select 1` probe fails, so Render will not route traffic to a container with a broken
   `DATABASE_URL`. Confirm it on a throwaway service by setting a bad `DATABASE_URL` and checking for 503,
   not 200. The trade-off is deliberate: a sustained Postgres outage will make Render restart the service.
-- **The pre-deploy step runs.** Push a trivial commit and confirm `Migrations applied.` appears in the
-  deploy log before the new instance starts.
+- **Migrations run on deploy.** Push a trivial commit and confirm `Migrations applied.` appears in the
+  deploy log before the new instance starts — at the end of the build on free, in the pre-deploy step on
+  starter.
 - **A migration failure is safe.** Temporarily point `MIGRATE_DATABASE_URL` at a bad host, deploy, and
   confirm Render aborts with the previous version still serving.
 - **Isolation** — the `app_api` check from step 3, re-run against production.
