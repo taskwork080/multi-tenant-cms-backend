@@ -23,6 +23,16 @@ const envSchema = z
     DATABASE_URL: z.string().url("DATABASE_URL must be a postgres connection URL"),
     SUPABASE_URL: z.string().url(),
 
+    /**
+     * Migrations only — scripts/migrate.ts, never the running API.
+     *
+     * In production DATABASE_URL points at the NOBYPASSRLS `app_api` role, which
+     * has no DDL, so migrations need the owner's credentials separately. Declared
+     * here so the variable is discoverable beside the one it stands in for;
+     * nothing in src/ may read it. Unset locally, where DATABASE_URL is the owner.
+     */
+    MIGRATE_DATABASE_URL: z.string().url().optional().or(z.literal("")),
+
     // --- Auth ---------------------------------------------------------------
     SUPABASE_PUBLISHABLE_KEY: z.string().optional(),
     /** Legacy HS256 verification. When unset, tokens are verified via JWKS. */

@@ -3,14 +3,18 @@
   "version": "0.1.0",
   "description": "NestJS backend for the multi-tenant CMS admin (Supabase Postgres + Auth, Drizzle ORM, Cloudflare R2, WebSocket chat)",
   "private": true,
+  "engines": {
+    "node": ">=20 <23"
+  },
   "scripts": {
-    "build": "nest build",
+    "build": "nest build && tsc -p tsconfig.migrate.json",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/src/main",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "ts-node -r tsconfig-paths/register scripts/migrate.ts",
+    "db:migrate:prod": "node dist/scripts/migrate.js",
     "db:seed": "ts-node -T -r tsconfig-paths/register scripts/seed.ts",
     "db:reset-users": "ts-node -T -r tsconfig-paths/register scripts/reset-users.ts",
     "db:backfill": "ts-node -r tsconfig-paths/register scripts/backfill-rbac.ts",
@@ -37,6 +41,7 @@
     "@nestjs/swagger": "^11.4.5",
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/websockets": "^11.0.0",
+    "dotenv": "^17.4.1",
     "drizzle-orm": "^0.44.0",
     "drizzle-zod": "^0.8.0",
     "helmet": "^8.3.0",

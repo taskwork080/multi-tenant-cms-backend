@@ -69,7 +69,7 @@ describe("placeOrderSchema", () => {
   });
 
   it("requires a payment method — it decides the surcharge", () => {
-    const { paymentMethod, ...rest } = valid;
+    const { paymentMethod: _paymentMethod, ...rest } = valid;
     expect(() => placeOrderSchema.parse(rest)).toThrow();
   });
 

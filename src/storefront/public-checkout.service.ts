@@ -93,7 +93,7 @@ export class PublicCheckoutService {
     // `productId` is how placeOrder writes order_items; a shopper has no use
     // for an internal uuid and this response goes to the open internet. Same
     // rule as every other public DTO here — nothing leaves that wasn't chosen.
-    return { ...priced, lines: priced.lines.map(({ productId, ...line }) => line) as PricedLine[] };
+    return { ...priced, lines: priced.lines.map(({ productId: _productId, ...line }) => line) as PricedLine[] };
   }
 
   /**
