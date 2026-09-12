@@ -6,7 +6,7 @@
   // runner is the one script a deployment *does* need: it runs as the host's
   // pre-deploy step, where ts-node and tsconfig-paths — both devDependencies —
   // may not be installed. So it gets its own compile, with plain `node` as the
-  // entry point (`npm run db:migrate:prod`).
+  // entry point (`npm run db:migrate:deployed`).
   //
   // Ordering matters: nest-cli.json sets deleteOutDir, so `npm run build` runs
   // `nest build` FIRST and this second, or this output is wiped.

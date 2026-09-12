@@ -39,7 +39,7 @@ services:
     # (below) to the build as well, and under it `npm ci` silently skips
     # devDependencies — @nestjs/cli and typescript, which `npm run build` needs.
     # Without the flag the install succeeds and the build dies on `nest: not found`.
-    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate:prod
+    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate:deployed
     startCommand: node dist/src/main
     healthCheckPath: /health
 

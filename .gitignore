@@ -1,6 +1,10 @@
 node_modules/
 dist/
+# Every environment file: .env (development) and .env.prod (production
+# credentials, copied from Render). Only the template is tracked.
 .env
+.env.*
+!.env.example
 *.log
 .DS_Store
 test/.artifacts/

@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./lib/env-target";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import postgres from "postgres";
