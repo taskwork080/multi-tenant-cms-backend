@@ -509,12 +509,16 @@ export class StorefrontService {
       if (hit && Date.now() - hit.at < StorefrontService.TTL_MS) return hit.slug;
 
       // Runs with no tenant context — the whole reason storefront_configs is
-      // RLS-enabled but not FORCEd (drizzle/0009_storefront_rls.sql).
-      const [row] = await this.tdb.raw
-        .select({ tenantId: storefrontConfigs.tenantId })
-        .from(storefrontConfigs)
-        .where(eq(storefrontConfigs.customDomain, h))
-        .limit(1);
+      // RLS-enabled but not FORCEd (drizzle/0009_storefront_rls.sql). Not
+      // FORCEd only exempts the table's OWNER, though, and the API runs as
+      // app_api; so this needs the platform context to see anything at all.
+      const [row] = await this.tdb.asPlatform((tx) =>
+        tx
+          .select({ tenantId: storefrontConfigs.tenantId })
+          .from(storefrontConfigs)
+          .where(eq(storefrontConfigs.customDomain, h))
+          .limit(1),
+      );
       if (row) {
         const tenant = await this.tenants.byId(row.tenantId);
         this.domainCache.set(h, { slug: tenant.slug, at: Date.now() });
@@ -554,11 +558,12 @@ export class StorefrontService {
     }
     if (!tenant.entitlements.includes(STOREFRONT_MODULE)) throw unavailable;
 
-    const [config] = await this.tdb.raw
-      .select()
-      .from(storefrontConfigs)
-      .where(eq(storefrontConfigs.tenantId, tenant.id))
-      .limit(1);
+    // The anonymous path has no tenant context to set — the tenant was just
+    // resolved from the host. asPlatform is what lets this read the row; the
+    // explicit tenant_id filter is what keeps it to one tenant.
+    const [config] = await this.tdb.asPlatform((tx) =>
+      tx.select().from(storefrontConfigs).where(eq(storefrontConfigs.tenantId, tenant.id)).limit(1),
+    );
     if (!config || !config.isActive) throw unavailable;
     return { tenant, config };
   }
@@ -1177,12 +1182,18 @@ export class StorefrontService {
   async domainStatus(tenant: TenantDto): Promise<{ customDomain: string | null; resolves: boolean }> {
     this.assertEntitled(tenant);
     const config = await this.getConfig(tenant);
-    if (!config.customDomain) return { customDomain: null, resolves: false };
-    const [row] = await this.tdb.raw
-      .select({ tenantId: storefrontConfigs.tenantId })
-      .from(storefrontConfigs)
-      .where(eq(storefrontConfigs.customDomain, config.customDomain))
-      .limit(1);
-    return { customDomain: config.customDomain, resolves: row?.tenantId === tenant.id };
+    const domain = config.customDomain;
+    if (!domain) return { customDomain: null, resolves: false };
+    // Deliberately cross-tenant: the question is whether this domain resolves
+    // to *this* tenant or someone else's, which a tenant-scoped read cannot
+    // answer — it would return no row either way and report "not resolving".
+    const [row] = await this.tdb.asPlatform((tx) =>
+      tx
+        .select({ tenantId: storefrontConfigs.tenantId })
+        .from(storefrontConfigs)
+        .where(eq(storefrontConfigs.customDomain, domain))
+        .limit(1),
+    );
+    return { customDomain: domain, resolves: row?.tenantId === tenant.id };
   }
 }

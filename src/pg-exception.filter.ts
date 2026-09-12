@@ -56,10 +56,17 @@ export class PgExceptionFilter implements ExceptionFilter {
         });
       default:
         this.logger.error(`Unhandled database error (${pg.code ?? "no code"}): ${exception.message}`);
+        // The SQLSTATE is returned; `pg.detail` and the query still are not.
+        // A bare "Database query failed" cost an afternoon of log archaeology
+        // to identify as a 42501 from a missing RLS policy (see
+        // drizzle/0017_storefront_config_rls.sql). The five-character class is
+        // not sensitive — it names a category of fault, not any data — and it
+        // turns an opaque 500 into something diagnosable from the response.
         return res.status(500).json({
           statusCode: 500,
           error: "Internal Server Error",
           message: "Database query failed",
+          code: pg.code,
         });
     }
   }
