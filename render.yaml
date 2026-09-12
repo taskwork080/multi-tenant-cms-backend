@@ -52,8 +52,13 @@ services:
         value: "false"
       - key: PLATFORM_IMPERSONATION_ALLOW_WRITES
         value: "false"
+      # NOT `cms-assets` — that is the development bucket, and R2 bucket names
+      # are unique per Cloudflare account. Pointing production at it would mix
+      # the two environments' objects: keys are `${tenantSlug}/${kind}/...` and
+      # the slug prefix is the isolation boundary presignDownload checks, so a
+      # dev and a prod tenant sharing a slug would share files.
       - key: R2_BUCKET
-        value: cms-assets
+        value: cms-assets-prod
       # PORT is intentionally absent — Render injects it and src/main.ts reads it.
       # ENABLE_DOCS is intentionally absent — unset means Swagger is off in
       # production, and it is unauthenticated by construction.

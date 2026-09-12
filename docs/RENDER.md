@@ -172,12 +172,63 @@ Then point the admin app's `NEXT_PUBLIC_API_URL` at `https://api.yourdomain.com`
 into the JS bundle at `next build` time, so the frontend needs a **rebuild** — changing the environment
 variable alone does nothing.
 
-## 6. R2 bucket CORS
+## 6. R2
 
-Add a rule on the production bucket allowing `PUT` and `GET` from `https://app.yourdomain.com`. This is a
-third allowlist, independent of the API's `CORS_ORIGIN` and the gateway's copy of it in
-[`src/chat/chat.gateway.ts`](../src/chat/chat.gateway.ts) — miss it and uploads fail only in production,
-while working locally.
+R2 is optional — the API boots without it and only uploads fail, with a clear 503 from
+[`R2Service.ensure()`](../src/uploads/r2.service.ts). These four steps turn it on.
+
+**Use a separate bucket from development.** `R2_BUCKET` is hardcoded in [`render.yaml`](../render.yaml) as
+`cms-assets-prod` for that reason. Object keys are `${tenantSlug}/${kind}/…` and the slug prefix is the
+isolation boundary `presignDownload` checks, so if both environments share a bucket, a dev tenant and a
+prod tenant with the same slug share files.
+
+1. **Create the bucket** `cms-assets-prod` — location hint nearest your users. If you name it something
+   else, change `R2_BUCKET` in `render.yaml` to match and re-sync the Blueprint.
+
+2. **Enable public access.** Bucket → Settings → Public access → **R2.dev subdomain → Allow**, and copy the
+   `https://pub-<hash>.r2.dev` URL. Cloudflare rate-limits r2.dev and does not intend it for production
+   traffic, so move to a custom domain once you have one — but do not skip this step, because the
+   alternative is worse (see `R2_PUBLIC_URL` below).
+
+3. **CORS policy.** Bucket → Settings → CORS policy:
+
+   ```json
+   [
+     {
+       "AllowedOrigins": ["https://app.yourdomain.com"],
+       "AllowedMethods": ["PUT", "GET"],
+       "AllowedHeaders": ["content-type"],
+       "ExposeHeaders": ["ETag"],
+       "MaxAgeSeconds": 3600
+     }
+   ]
+   ```
+
+   The browser PUTs straight to `<account>.r2.cloudflarestorage.com` with a `Content-Type` header
+   ([`src/lib/r2-upload.ts`](https://github.com/taskwork080/multi-tenant-cms) in the admin app), so
+   `content-type` is required in `AllowedHeaders`, not decorative. This is a **third** allowlist,
+   independent of the API's `CORS_ORIGIN` and the gateway's copy of it in
+   [`src/chat/chat.gateway.ts`](../src/chat/chat.gateway.ts) — miss it and uploads fail only in production,
+   while working locally.
+
+4. **API token.** R2 → Manage R2 API Tokens → Create, permission **Object Read & Write**, scoped to this
+   one bucket. The secret is shown once. Then set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+   `R2_SECRET_ACCESS_KEY` and `R2_PUBLIC_URL` in the Render dashboard.
+
+**`R2_PUBLIC_URL` is not optional in practice.** Left blank,
+[`R2Service.presignUpload`](../src/uploads/r2.service.ts) returns a **7-day presigned GET** as the asset's
+`publicUrl`, and the admin app stores that string on the row. Every image loads for a week and then 403s,
+with the dead URLs already persisted. A trailing slash is tolerated.
+
+Verify the whole thing without a browser:
+
+```bash
+npx tsx scripts/verify-r2.ts --env=prod --allow-prod
+```
+
+It checks the credentials, that the token is scoped to the right bucket, that a presigned PUT works, and
+that the object is readable back through `R2_PUBLIC_URL` — then deletes what it wrote. It **cannot** check
+CORS, which only the browser enforces; for that, upload an image from the admin app and watch devtools.
 
 ## 7. First platform admin
 
