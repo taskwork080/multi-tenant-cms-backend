@@ -23,7 +23,7 @@
  *    and a platform admin has no tenant, so no staff_users row applies. This
  *    path talks to Supabase Admin + auth.users directly.
  */
-import "dotenv/config";
+import "./lib/env-target";
 import { Logger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import postgres from "postgres";

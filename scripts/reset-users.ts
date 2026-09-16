@@ -19,7 +19,7 @@
  * Run `npm run db:seed` afterwards to recreate the superadmin and the default
  * tenant owner.
  */
-import "dotenv/config";
+import "./lib/env-target";
 import { Logger, type INestApplicationContext } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { sql } from "drizzle-orm";

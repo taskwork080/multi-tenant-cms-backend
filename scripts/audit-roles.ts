@@ -17,7 +17,7 @@
  * Read-only. It changes nothing — fix anything it reports through
  * /platform/admins or Supabase.
  */
-import "dotenv/config";
+import "./lib/env-target";
 import postgres from "postgres";
 import { APP_ROLES, PLATFORM_ADMIN } from "../src/auth/roles";
 

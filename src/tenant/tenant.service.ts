@@ -112,11 +112,16 @@ export class TenantService {
   }
 
   private async loadEntitlements(tenantId: string): Promise<string[]> {
-    const rows = await this.tdb.raw
-      .select({ module: tenantEntitlements.module })
-      .from(tenantEntitlements)
-      .where(eq(tenantEntitlements.tenantId, tenantId))
-      .orderBy(asc(tenantEntitlements.module));
+    // asPlatform, not raw: tenant_entitlements' only tenant-facing policy is
+    // `tenant_id = current_tenant_id()`, and this runs during tenant
+    // resolution, before any context exists. See TenantDb.raw.
+    const rows = await this.tdb.asPlatform((tx) =>
+      tx
+        .select({ module: tenantEntitlements.module })
+        .from(tenantEntitlements)
+        .where(eq(tenantEntitlements.tenantId, tenantId))
+        .orderBy(asc(tenantEntitlements.module)),
+    );
     return rows.map((r) => r.module);
   }
 
@@ -143,7 +148,13 @@ export class TenantService {
     const hit = this.cache.get(slug);
     if (hit && Date.now() - hit.at < TenantService.TTL_MS) return hit.dto;
 
-    const [row] = await this.tdb.raw.select().from(tenants).where(eq(tenants.slug, slug)).limit(1);
+    // TenantGuard calls this to turn a URL slug into a tenant, so by definition
+    // there is no tenant context yet and `tenants.tenant_self_read`
+    // (`id = current_tenant_id()`) matches nothing. Without asPlatform every
+    // /api/:tenant/* request 404s once the API stops bypassing RLS.
+    const [row] = await this.tdb.asPlatform((tx) =>
+      tx.select().from(tenants).where(eq(tenants.slug, slug)).limit(1),
+    );
     if (!row) throw new NotFoundException(`Unknown tenant "${slug}"`);
     const dto = this.toDto(row, await this.loadEntitlements(row.id));
     this.cache.set(slug, { dto, at: Date.now() });
@@ -151,7 +162,9 @@ export class TenantService {
   }
 
   async byId(id: string): Promise<TenantDto> {
-    const [row] = await this.tdb.raw.select().from(tenants).where(eq(tenants.id, id)).limit(1);
+    const [row] = await this.tdb.asPlatform((tx) =>
+      tx.select().from(tenants).where(eq(tenants.id, id)).limit(1),
+    );
     if (!row) throw new NotFoundException(`Unknown tenant "${id}"`);
     return this.toDto(row, await this.loadEntitlements(row.id));
   }
@@ -161,18 +174,22 @@ export class TenantService {
   }
 
   async list(): Promise<TenantDto[]> {
-    const rows = await this.tdb.raw.select().from(tenants);
+    const rows = await this.tdb.asPlatform((tx) => tx.select().from(tenants));
     return Promise.all(rows.map(async (row) => this.toDto(row, await this.loadEntitlements(row.id))));
   }
 
   async update(slug: string, input: TenantInput): Promise<TenantDto> {
     const cols = this.toColumns(input);
     delete (cols as Record<string, unknown>).slug; // slug is the identifier, not updatable here
-    const [row] = await this.tdb.raw
-      .update(tenants)
-      .set({ ...cols, updatedAt: new Date() })
-      .where(eq(tenants.slug, slug))
-      .returning();
+    // An UPDATE under no context matches no rows, so `.returning()` comes back
+    // empty and this throws a 404 for a tenant that plainly exists.
+    const [row] = await this.tdb.asPlatform((tx) =>
+      tx
+        .update(tenants)
+        .set({ ...cols, updatedAt: new Date() })
+        .where(eq(tenants.slug, slug))
+        .returning(),
+    );
     if (!row) throw new NotFoundException(`Unknown tenant "${slug}"`);
     if (input.entitlements) await this.replaceEntitlements(row.id, input.entitlements);
     this.invalidate(slug);

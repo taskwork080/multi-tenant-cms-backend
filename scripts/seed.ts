@@ -15,7 +15,7 @@
  * identity again if the row fails. Reimplementing that here would be a second,
  * subtly wrong copy.
  */
-import "dotenv/config";
+import "./lib/env-target";
 import { Logger } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { asc, eq, inArray } from "drizzle-orm";

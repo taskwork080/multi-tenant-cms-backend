@@ -26,7 +26,7 @@
  *  - It does not touch users. Sign-in accounts come from `npm run db:seed` /
  *    `npm run user:create`, which own the GoTrue+Postgres protocol.
  */
-import "dotenv/config";
+import "./lib/env-target";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Logger } from "@nestjs/common";

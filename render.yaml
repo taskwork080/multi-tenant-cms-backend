@@ -1,0 +1,94 @@
+# Render Blueprint — see docs/RENDER.md for the full setup order.
+#
+# Create with: Render dashboard > New > Blueprint > this repo.
+# Every `sync: false` value is entered in the dashboard and never committed.
+
+services:
+  - type: web
+    name: multi-tenant-cms-api
+    runtime: node
+    # Free for now — no card on file. Free sleeps after ~15 min idle, and while
+    # asleep the @nestjs/schedule cron jobs (reservation expiry every 10 min,
+    # promo status hourly) do not run, Socket.IO clients are dropped, and the
+    # first request back takes ~50s. Fine for trying it out; move to `starter`
+    # before real tenants depend on it (one setting in the dashboard, no rebuild).
+    # When you do, also move the migration step below into `preDeployCommand`.
+    plan: free
+    # Must match the Supabase project's region (ap-southeast-1). Every request
+    # makes several round trips to Postgres, so a cross-region pair adds ~200ms
+    # to each one. Users are in Bangladesh — see the phone validation in
+    # src/storefront/checkout.schemas.ts.
+    region: singapore
+    branch: main
+    autoDeploy: true
+    # Keep at 1. The Socket.IO gateway has no Redis adapter, the throttler
+    # stores counts in memory, and the cron jobs are not leader-gated — a second
+    # instance duplicates cron work, multiplies rate limits, and splits realtime
+    # rooms. Scale vertically first.
+    numInstances: 1
+
+    # Migrations run at the END of the build. The free plan has no
+    # preDeployCommand, and the build is the next-safest place: Render gives the
+    # build the same env vars as the service (MIGRATE_DATABASE_URL included), and
+    # a failed build aborts the deploy while the previous version keeps serving.
+    # Never put them in startCommand — a failed migration there crash-loops the
+    # service on every boot. They come after `npm run build` because they run
+    # the compiled dist/scripts/migrate.js.
+    #
+    # --include=dev is required, not optional: Render passes NODE_ENV=production
+    # (below) to the build as well, and under it `npm ci` silently skips
+    # devDependencies — @nestjs/cli and typescript, which `npm run build` needs.
+    # Without the flag the install succeeds and the build dies on `nest: not found`.
+    buildCommand: npm ci --include=dev && npm run build && npm run db:migrate:deployed
+    startCommand: node dist/src/main
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_DEV_BYPASS
+        value: "false"
+      - key: PLATFORM_ALLOW_PASSWORD_SET
+        value: "false"
+      - key: PLATFORM_IMPERSONATION_ALLOW_WRITES
+        value: "false"
+      # NOT `cms-assets` — that is the development bucket, and R2 bucket names
+      # are unique per Cloudflare account. Pointing production at it would mix
+      # the two environments' objects: keys are `${tenantSlug}/${kind}/...` and
+      # the slug prefix is the isolation boundary presignDownload checks, so a
+      # dev and a prod tenant sharing a slug would share files.
+      - key: R2_BUCKET
+        value: cms-assets-prod
+      # PORT is intentionally absent — Render injects it and src/main.ts reads it.
+      # ENABLE_DOCS is intentionally absent — unset means Swagger is off in
+      # production, and it is unauthenticated by construction.
+
+      # --- Set in the dashboard --------------------------------------------
+      # Postgres must be the Supabase *pooler* host (aws-*.pooler.supabase.com):
+      # db.<ref>.supabase.co is IPv6-only and Render's egress is IPv4.
+      - key: DATABASE_URL # runtime: the app_api role, DML only
+        sync: false
+      - key: MIGRATE_DATABASE_URL # migrations: the owner (postgres) role
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY # server-only; never mirror to NEXT_PUBLIC_*
+        sync: false
+      - key: CORS_ORIGIN # exact scheme, no trailing slash
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: STOREFRONT_ROOT_DOMAIN
+        sync: false
+      - key: R2_ACCOUNT_ID # the R2 trio is all-or-nothing
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false
