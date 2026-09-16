@@ -3,7 +3,8 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger"
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/db.tokens";
-import { inboundReceiptItems, inboundReceipts, warehouses } from "../db/schema";
+import { inboundReceiptCharges, inboundReceiptItems, inboundReceipts, suppliers, warehouses } from "../db/schema";
+import { allocateCharges, costInputSchema, landedFor, normalizeCost, type ChargeBasis } from "./purchase-cost";
 import { TenantDb } from "../db/tenant-db.service";
 import { CurrentUser } from "../auth/decorators";
 import { actorOf, type AuthUser } from "../auth/auth.types";
@@ -13,13 +14,24 @@ import { InventoryService } from "./inventory.service";
 import { RequireModule } from "../tenant/module.decorator";
 import { RequireCapability } from "../auth/decorators";
 
+/** One of the other bills on a delivery — freight, duty, clearing. */
+const chargeSchema = z.object({
+  label: z.string().trim().max(120).optional(),
+  amount: z.number().nonnegative(),
+  note: z.string().optional(),
+});
+
 const createSchema = z.object({
   warehouseId: z.string().uuid(),
+  supplierId: z.string().uuid().optional(),
   supplierName: z.string().optional(),
   manufacturerId: z.string().uuid().optional(),
   referenceNo: z.string().optional(),
   photoUrl: z.string().optional(),
   note: z.string().optional(),
+  /** Freight, duty, clearing — spread across the lines to give a landed cost. */
+  charges: z.array(chargeSchema).optional(),
+  chargeBasis: z.enum(["value", "qty"]).optional(),
   /** Confirm immediately (the common case — goods are physically here). */
   confirm: z.boolean().optional(),
   items: z
@@ -27,7 +39,7 @@ const createSchema = z.object({
       z.object({
         skuId: z.string().uuid(),
         qty: z.number().int().positive(),
-        unitCost: z.number().nonnegative().optional(),
+        ...costInputSchema,
         expiryDate: z.string().optional(),
         batchRef: z.string().optional(),
       }),
@@ -71,6 +83,23 @@ export class ReceiptsController {
         .limit(1);
       if (!warehouse) throw new NotFoundException("Warehouse not found");
 
+      // A supplier picked from the list names itself; free text stays accepted
+      // for callers that predate the supplier domain.
+      let supplierName = input.supplierName ?? "";
+      if (input.supplierId) {
+        const [supplier] = await tx
+          .select({ name: suppliers.name })
+          .from(suppliers)
+          .where(and(eq(suppliers.tenantId, tenant.id), eq(suppliers.id, input.supplierId)))
+          .limit(1);
+        if (!supplier) throw new NotFoundException("Supplier not found");
+        supplierName = supplier.name;
+      }
+
+      const charges = (input.charges ?? []).filter((c) => c.amount > 0);
+      const chargesTotal = Math.round(charges.reduce((n, c) => n + c.amount, 0) * 100) / 100;
+      const basis: ChargeBasis = input.chargeBasis ?? "value";
+
       const ref = await this.inventory.nextRef(tx, tenant.id, "inbound_receipts", "GRN");
       const [receipt] = await tx
         .insert(inboundReceipts)
@@ -79,17 +108,41 @@ export class ReceiptsController {
           ref,
           warehouseId: warehouse.id,
           warehouseName: warehouse.name,
-          supplierName: input.supplierName ?? "",
+          supplierId: input.supplierId,
+          supplierName,
           manufacturerId: input.manufacturerId,
           referenceNo: input.referenceNo,
           photoUrl: input.photoUrl,
           note: input.note,
+          chargesTotal,
+          chargeBasis: basis,
         })
         .returning();
+
+      for (const [i, charge] of charges.entries()) {
+        await tx.insert(inboundReceiptCharges).values({
+          tenantId: tenant.id,
+          receiptId: receipt.id,
+          label: charge.label?.trim() || "Other cost",
+          amount: charge.amount,
+          note: charge.note,
+          sort: i,
+        });
+      }
+
+      // Prices first — the allocation weighs each line by what it cost.
+      const costs = input.items.map((item) => normalizeCost(item.qty, item));
+      const shares = allocateCharges(
+        input.items.map((item, i) => ({ qty: item.qty, lineTotal: costs[i].lineTotal })),
+        chargesTotal,
+        basis,
+      );
 
       for (const [i, item] of input.items.entries()) {
         const sku = await this.inventory.resolveSku(tx, tenant.id, { skuId: item.skuId });
         if (!sku) throw new NotFoundException(`SKU ${item.skuId} not found`);
+        const cost = costs[i];
+        const landed = landedFor(item.qty, cost.lineTotal, shares[i]);
         await tx.insert(inboundReceiptItems).values({
           tenantId: tenant.id,
           receiptId: receipt.id,
@@ -97,7 +150,12 @@ export class ReceiptsController {
           skuCode: sku.code,
           name: sku.name,
           qty: item.qty,
-          unitCost: item.unitCost,
+          unitCost: cost.unitCost,
+          lineTotal: cost.lineTotal,
+          costMode: cost.costMode,
+          allocatedCharge: shares[i],
+          landedTotal: landed.landedTotal,
+          landedUnitCost: landed.landedUnitCost,
           expiryDate: item.expiryDate,
           batchRef: item.batchRef,
           sort: i,

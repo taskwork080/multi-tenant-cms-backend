@@ -47,8 +47,11 @@ export const tenants = pgTable("tenants", {
   themeBrandFg: text("theme_brand_fg").notNull().default("#ffffff"),
   // config (TenantConfig, flattened)
   defaultLanguage: text("default_language").notNull().default("en"), // en | bn
-  currency: text("currency").notNull().default("USD"),
-  currencySymbol: text("currency_symbol").notNull().default("$"),
+  // BDT is the platform default — see src/common/currency.ts. The column
+  // default matters on its own: a row inserted by a script or a migration that
+  // doesn't mention currency must still land on taka, not dollars.
+  currency: text("currency").notNull().default("BDT"),
+  currencySymbol: text("currency_symbol").notNull().default("৳"),
   ga4Id: text("ga4_id"),
   pixelId: text("pixel_id"),
   strictOrderFlow: boolean("strict_order_flow").notNull().default(false),
@@ -562,6 +565,11 @@ export const stockMovements = pgTable(
  * A soft hold placed when an order is created and settled when it is packed
  * (fulfilled) or cancelled (released). The unique on (order_item, warehouse)
  * is what makes reserving idempotent under a retried order create.
+ *
+ * A hold may also belong to a *draft packing list* rather than an order — goods
+ * being boxed for a shipment that has no order behind it, which is the ordinary
+ * case for third-party garment shipments. Those rows carry `packing_list_id`
+ * and leave the order columns null.
  */
 export const inventoryReservations = pgTable(
   "inventory_reservations",
@@ -576,6 +584,14 @@ export const inventoryReservations = pgTable(
       .references(() => warehouses.id, { onDelete: "restrict" }),
     orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }),
     orderItemId: uuid("order_item_id").references(() => orderItems.id, { onDelete: "cascade" }),
+    /**
+     * Set instead of the order columns when a draft packing list is holding the
+     * goods. Held per (list, SKU, warehouse) rather than per packing item:
+     * packing item ids are not stable, because a PATCH replaces the children.
+     */
+    packingListId: uuid("packing_list_id").references((): AnyPgColumn => packingLists.id, {
+      onDelete: "cascade",
+    }),
     /** Denormalized order code for the outbound queue. */
     orderCode: text("order_code").notNull().default(""),
     skuCode: text("sku_code").notNull().default(""),
@@ -593,6 +609,12 @@ export const inventoryReservations = pgTable(
     index("inventory_reservations_order_idx").on(t.orderId),
     index("inventory_reservations_sku_idx").on(t.tenantId, t.skuId, t.status),
     uniqueIndex("inventory_reservations_item").on(t.orderItemId, t.warehouseId),
+    // Postgres treats NULLs as distinct in a unique index, so order-held rows
+    // (packing_list_id null) never collide here, and packing-held rows never
+    // collide on the order index above.
+    uniqueIndex("inventory_reservations_packing")
+      .on(t.packingListId, t.skuId, t.warehouseId)
+      .where(sql`${t.packingListId} is not null`),
   ],
 );
 
@@ -647,9 +669,51 @@ export const stockTransferItems = pgTable(
 );
 
 /**
- * Goods-received note — the inbound half of the lifecycle. There is no
- * purchase-order/supplier domain yet (the lifecycle starts at "Inventory
- * Added"); supplier_name plus an optional manufacturer FK leaves room for one.
+ * Who goods are bought from.
+ *
+ * `inbound_receipts` used to carry only a free-text `supplier_name`, with a
+ * comment reserving room for a real supplier domain — this is it. Free text
+ * cannot answer "what have I bought from this supplier and at what price",
+ * because "ACME", "Acme Ltd" and "acme" are three suppliers to a GROUP BY.
+ *
+ * Distinct from `manufacturers`: a manufacturer is who *made* the goods (a
+ * catalog fact about a product), a supplier is who you *bought them from* (a
+ * commercial fact about a purchase). The same box can have both, and they are
+ * frequently different companies.
+ */
+export const suppliers = pgTable(
+  "suppliers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    name: text("name").notNull(),
+    /** Short internal code, e.g. SUP-ACME. Optional and user-assigned. */
+    code: text("code"),
+    contactName: text("contact_name"),
+    phone: text("phone"),
+    email: text("email"),
+    address: text("address"),
+    /** VAT / BIN / TIN — whatever the jurisdiction calls it. */
+    taxId: text("tax_id"),
+    /** Agreed payment terms, free text (e.g. "Net 30", "50% advance"). */
+    paymentTerms: text("payment_terms"),
+    notes: text("notes"),
+    active: boolean("active").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [
+    index("suppliers_tenant_idx").on(t.tenantId),
+    // Names are the thing people type and the thing the purchase log groups
+    // by, so duplicates are prevented here rather than deduplicated later.
+    uniqueIndex("suppliers_tenant_name").on(t.tenantId, t.name),
+  ],
+);
+
+/**
+ * Goods-received note — the inbound half of the lifecycle, and the record of
+ * what a purchase cost. `supplier_id` is the real link; `supplier_name` stays
+ * denormalized beside it so lists and CSV exports need no join and a receipt
+ * keeps naming its supplier even if that supplier row is later deleted.
  */
 export const inboundReceipts = pgTable(
   "inbound_receipts",
@@ -661,6 +725,9 @@ export const inboundReceipts = pgTable(
       .notNull()
       .references(() => warehouses.id, { onDelete: "restrict" }),
     warehouseName: text("warehouse_name").notNull().default(""),
+    // set null, not cascade: deleting a supplier must not erase the purchase
+    // history that proves what was bought from them.
+    supplierId: uuid("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
     supplierName: text("supplier_name").notNull().default(""),
     manufacturerId: uuid("manufacturer_id").references(() => manufacturers.id, { onDelete: "set null" }),
     status: text("status").notNull().default("draft"), // draft | received | cancelled
@@ -669,6 +736,18 @@ export const inboundReceipts = pgTable(
     referenceNo: text("reference_no"),
     photoUrl: text("photo_url"),
     note: text("note"),
+    /** Sum of `inbound_receipt_charges`, denormalized so lists need no join. */
+    chargesTotal: numeric("charges_total", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+    /**
+     * How the extra bills are spread across the lines.
+     *
+     * `value` — in proportion to what each line cost. The usual answer: duty and
+     *           insurance scale with the value of the goods.
+     * `qty`   — in proportion to how many pieces. Right for freight and
+     *           handling, where a cheap bulky item costs as much to move as a
+     *           dear one.
+     */
+    chargeBasis: text("charge_basis").notNull().default("value"), // value | qty
     ...timestamps,
   },
   (t) => [
@@ -693,12 +772,87 @@ export const inboundReceiptItems = pgTable(
     name: text("name").notNull().default(""),
     qty: integer("qty").notNull().default(0),
     receivedQty: integer("received_qty").notNull().default(0),
+    /**
+     * Price of one unit. Always populated when a price is known — derived from
+     * `line_total` when the line was priced as a lot.
+     */
     unitCost: numeric("unit_cost", { precision: 12, scale: 2, mode: "number" }),
+    /**
+     * Total paid for the whole line. Stored rather than computed as
+     * qty × unit_cost because a lot-priced line does not divide evenly: 7 boxes
+     * for 100.00 is 14.285714… per unit, and recomputing the total from a
+     * rounded unit cost gives 99.99 — a figure that matches no invoice.
+     */
+    lineTotal: numeric("line_total", { precision: 14, scale: 2, mode: "number" }),
+    /**
+     * Which of the two the buyer actually typed; the other is derived. Kept so
+     * the log can show the figure that was on the invoice, and so an edit
+     * re-derives in the same direction the original entry did.
+     */
+    costMode: text("cost_mode").notNull().default("unit"), // unit | total
+    /**
+     * This line's share of the receipt's extra bills — freight, duty, clearing.
+     *
+     * Stored rather than recomputed on read: the shares are rounded to cents
+     * with the remainder given to the largest line so they sum to the charge
+     * total exactly, and that apportionment has to stay stable. Recomputing it
+     * later against an edited receipt would silently restate what this delivery
+     * cost.
+     */
+    allocatedCharge: numeric("allocated_charge", { precision: 14, scale: 2, mode: "number" })
+      .notNull()
+      .default(0),
+    /**
+     * What the goods on this line actually cost to get here:
+     * `line_total + allocated_charge`.
+     *
+     * Kept beside `line_total` rather than replacing it. The supplier billed
+     * `line_total` and that figure has to keep reconciling against their
+     * invoice; this is the one to cost a sale against.
+     */
+    landedTotal: numeric("landed_total", { precision: 14, scale: 2, mode: "number" }),
+    /** `landed_total / qty`. Derived, stored for the price log to sort on. */
+    landedUnitCost: numeric("landed_unit_cost", { precision: 12, scale: 2, mode: "number" }),
     expiryDate: text("expiry_date"), // yyyy-mm-dd
     batchRef: text("batch_ref"),
     sort: integer("sort").notNull().default(0),
   },
-  (t) => [index("inbound_receipt_items_receipt_idx").on(t.receiptId)],
+  (t) => [
+    index("inbound_receipt_items_receipt_idx").on(t.receiptId),
+    // The purchase-price log reads "every line for this SKU, newest first".
+    index("inbound_receipt_items_sku_idx").on(t.tenantId, t.skuId),
+  ],
+);
+
+/**
+ * The other bills on a delivery — freight, customs duty, clearing, transport,
+ * loading, insurance.
+ *
+ * A receipt's line prices are what the supplier charged for the goods. They are
+ * rarely what the goods cost to have standing in the warehouse, and on an
+ * import they can be a long way off. Recording these separately, then spreading
+ * them across the lines, is what turns an invoice price into a landed cost.
+ *
+ * A child table rather than a handful of named columns because the set is not
+ * knowable: every trade and every route has its own charges, and a fixed
+ * "freight / duty / other" trio would push everything else into "other" and
+ * lose the detail that made it worth recording.
+ */
+export const inboundReceiptCharges = pgTable(
+  "inbound_receipt_charges",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    receiptId: uuid("receipt_id")
+      .notNull()
+      .references(() => inboundReceipts.id, { onDelete: "cascade" }),
+    /** What the bill was for — "Freight", "Customs duty", "Clearing agent". */
+    label: text("label").notNull().default(""),
+    amount: numeric("amount", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+    note: text("note"),
+    sort: integer("sort").notNull().default(0),
+  },
+  (t) => [index("inbound_receipt_charges_receipt_idx").on(t.receiptId)],
 );
 
 /** Stock take. Posting one emits an `adjust`-kind movement per variance. */
@@ -1254,7 +1408,21 @@ export const packingLists = pgTable(
     shipmentId: uuid("shipment_id").references(() => shipments.id, { onDelete: "set null" }),
     orderCode: text("order_code"),
     customerName: text("customer_name"),
+    // Where the goods physically leave from. Without it the deduction had to
+    // guess a warehouse (pickWarehouse ?? defaultWarehouse) and silently
+    // skipped the line when neither resolved.
+    warehouseId: uuid("warehouse_id").references(() => warehouses.id, { onDelete: "restrict" }),
     status: text("status").notNull().default("draft"), // draft | packed | shipped
+    /**
+     * What this list has done to stock: none | held | deducted.
+     *
+     * Deliberately separate from `shipment_no`, which used to double as the
+     * stock guard. That number is a business-meaningful packing-shipment
+     * reference which must survive a reopen, so using it to gate the ledger
+     * made a reopened list impossible to re-confirm — the deduction stood and
+     * described contents that no longer existed.
+     */
+    stockState: text("stock_state").notNull().default("none"),
     signedBy: text("signed_by"),
     signedAt: timestamp("signed_at", { withTimezone: true }),
     notes: text("notes"),
@@ -1289,6 +1457,50 @@ export const packingItems = pgTable(
     sort: integer("sort").notNull().default(0),
   },
   (t) => [index("packing_items_list_idx").on(t.packingListId)],
+);
+
+/**
+ * Which SKU a packed size actually is.
+ *
+ * A packing line is a style; the pieces inside it are split by colour and size
+ * across carton ranges, and each of those combinations is a different SKU. The
+ * packing tables record those as free text (`item_cartons.color`,
+ * `carton_sizes.size`), so something has to say that "Navy / M" on PKG-07 is
+ * `JKT-NAVY-M`.
+ *
+ * Keyed on (product, colour, size) rather than on a packing row for two
+ * reasons. First, `CrudService.writeChildren` replaces a packing list's
+ * children wholesale on every PATCH, so a mapping stored on `carton_sizes`
+ * would be destroyed by the next save. Second, the mapping is a property of the
+ * style, not of one shipment — map it once and every future packing list for
+ * that style resolves by itself.
+ *
+ * An empty `color` means "any colour", so a style whose sizes are the only
+ * stocked dimension needs one row per size rather than one per combination.
+ */
+export const packingSkuMap = pgTable(
+  "packing_sku_map",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    tenantId: tenantId(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    /** Carton colour this applies to; "" matches any. */
+    color: text("color").notNull().default(""),
+    /** The size label as typed on the carton ("M", "42", "10"). */
+    sizeLabel: text("size_label").notNull(),
+    skuId: uuid("sku_id")
+      .notNull()
+      .references(() => skus.id, { onDelete: "cascade" }),
+    /** `auto` was guessed from the variant label; `manual` was chosen by a person. */
+    source: text("source").notNull().default("auto"),
+    ...timestamps,
+  },
+  (t) => [
+    index("packing_sku_map_tenant_idx").on(t.tenantId),
+    uniqueIndex("packing_sku_map_key").on(t.tenantId, t.productId, t.color, t.sizeLabel),
+  ],
 );
 
 /** Carton sub-range within a packing item (cartons fromNo..toNo, one color/ratio). */

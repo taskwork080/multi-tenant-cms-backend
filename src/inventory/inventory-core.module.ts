@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { FulfilmentService } from "./fulfilment.service";
 import { InventoryService } from "./inventory.service";
+import { PackingStockService } from "./packing-stock.service";
 
 /**
  * The inventory services, with no controllers of their own.
@@ -17,7 +18,7 @@ import { InventoryService } from "./inventory.service";
  * is decided solely by the import list in app.module.ts, where it's visible.
  */
 @Module({
-  providers: [InventoryService, FulfilmentService],
-  exports: [InventoryService, FulfilmentService],
+  providers: [InventoryService, FulfilmentService, PackingStockService],
+  exports: [InventoryService, FulfilmentService, PackingStockService],
 })
 export class InventoryCoreModule {}

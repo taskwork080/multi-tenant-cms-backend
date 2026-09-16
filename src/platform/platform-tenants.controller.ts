@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { and, asc, desc, eq, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { PLATFORM_ADMIN } from "../auth/auth.types";
 import { Roles } from "../auth/decorators";
+import { symbolFor } from "../common/currency";
 import { TenantDb } from "../db/tenant-db.service";
 import { platformAuditLog, roles, staffUsers, tenantEntitlements, tenants } from "../db/schema";
 import { TenantService } from "../tenant/tenant.service";
@@ -226,6 +227,12 @@ export class PlatformTenantsService {
   async update(id: string, body: unknown, ctx: AuditCtx) {
     const { allowOutsideType, ...input } = adminTenantPatchSchema.parse(body);
     const before = await this.tenantSvc.byId(id);
+
+    // Symbol follows the code, as on the tenant's own PATCH — the two columns
+    // describe one fact and must not be settable apart.
+    if (input.config?.currency) {
+      input.config.currencySymbol = symbolFor(input.config.currency);
+    }
 
     // Validate the *effective* pair, not just what was sent. Changing type
     // alone has to re-check entitlements nobody mentioned — otherwise flipping

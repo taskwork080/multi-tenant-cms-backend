@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { z } from "zod";
 import { APP_ROLES } from "../auth/roles";
+import { CURRENCY_CODES, type CurrencyCode } from "../common/currency";
 import { AUDIT_ACTIONS, AUDIT_TARGET_TYPES } from "./audit.actions";
 import { MODULE_KEYS, TENANT_TYPES, modulesOutsideType } from "./module-presets";
 
@@ -109,7 +110,10 @@ export const resetPasswordSchema = z
 const tenantConfigSchema = z
   .object({
     defaultLanguage: z.enum(["en", "bn"]).optional(),
-    currency: z.string().optional(),
+    // Same constraint as the tenant's own PATCH (tenants.controller.ts): the
+    // code is validated and the symbol is derived from it, so the two columns
+    // describing one fact cannot drift apart down either write path.
+    currency: z.enum(CURRENCY_CODES as [CurrencyCode, ...CurrencyCode[]]).optional(),
     currencySymbol: z.string().optional(),
     ga4Id: z.string().optional(),
     pixelId: z.string().optional(),

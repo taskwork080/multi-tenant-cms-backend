@@ -3,6 +3,7 @@ import { CountsController } from "./counts.controller";
 import { FulfilmentController } from "./fulfilment.controller";
 import { InventoryCoreModule } from "./inventory-core.module";
 import { InventoryController } from "./inventory.controller";
+import { PurchasesController } from "./purchases.controller";
 import { ReceiptsController } from "./receipts.controller";
 import { TransfersController } from "./transfers.controller";
 
@@ -21,6 +22,10 @@ import { TransfersController } from "./transfers.controller";
 @Module({
   imports: [InventoryCoreModule],
   controllers: [
+    // Before InventoryController: both live under /api/:tenant/inventory, and
+    // registration order is what keeps `purchases` from being swallowed if a
+    // parameterised GET is ever added there.
+    PurchasesController,
     InventoryController,
     FulfilmentController,
     TransfersController,

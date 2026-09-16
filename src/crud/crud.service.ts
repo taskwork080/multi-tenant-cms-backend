@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { and, asc, desc, eq, getTableColumns, gte, ilike, inArray, isNotNull, isNull, lte, or, sql, SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { Db } from "../db/db.tokens";
@@ -264,16 +264,34 @@ export class CrudService {
     return this.tdb.forTenant(tenant.id, async (tx) => {
       // Read first: releasing has to key off the *transition* into cancelled,
       // not the final value, or re-saving an already-cancelled order would
-      // release a second time.
-      const before = def.reservesStock
-        ? ((
-            await tx
-              .select()
-              .from(def.table)
-              .where(and(eq(def.table.id, id), eq(def.table.tenantId, tenant.id)))
-              .limit(1)
-          )[0] as Row | undefined)
-        : undefined;
+      // release a second time. `frozenWhen` needs the same read, so the two
+      // share it.
+      const before =
+        def.reservesStock || def.frozenWhen
+          ? ((
+              await tx
+                .select()
+                .from(def.table)
+                .where(and(eq(def.table.id, id), eq(def.table.tenantId, tenant.id)))
+                .limit(1)
+            )[0] as Row | undefined)
+          : undefined;
+
+      // A frozen row has consequences outside Postgres that a generic rewrite
+      // would desynchronise — a confirmed packing list has already moved stock,
+      // and `writeChildren` replaces children wholesale, so a PATCH would swap
+      // out the cartons that say what moved and leave the document and the
+      // ledger describing different shipments with nothing to show it happened.
+      //
+      // Only the CHILD rewrite is refused. Header edits stay open on purpose:
+      // a packed list still collects its courier's tracking number and carrier
+      // long after the stock has gone, and blocking those would freeze the
+      // shipment queue along with the cartons.
+      if (before && def.frozenWhen?.(before) && Object.keys(childInputs).length > 0) {
+        throw new ConflictException(
+          `The contents of this ${resource.replace(/s$/, "")} can no longer be edited — reopen it first.`,
+        );
+      }
 
       const [row] = await tx
         .update(def.table)

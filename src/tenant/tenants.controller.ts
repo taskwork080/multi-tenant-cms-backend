@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger"
 import { z } from "zod";
 import { RequireCapability, Roles } from "../auth/decorators";
 import { PLATFORM_ADMIN } from "../auth/roles";
+import { CURRENCY_CODES, symbolFor, type CurrencyCode } from "../common/currency";
 import { configFieldsOutsideType } from "../platform/module-presets";
 import { CurrentTenant } from "./tenant.decorator";
 import { TenantService, type TenantDto } from "./tenant.service";
@@ -10,7 +11,17 @@ import { TenantService, type TenantDto } from "./tenant.service";
 const configSchema = z
   .object({
     defaultLanguage: z.enum(["en", "bn"]).optional(),
-    currency: z.string().optional(),
+    /**
+     * One of the supported codes. Constrained rather than free text because
+     * `currency` and `currencySymbol` are two columns describing one fact, and
+     * an open string lets a workspace store "Taka" with a "$" — after which
+     * nothing can format a price correctly.
+     */
+    currency: z.enum(CURRENCY_CODES as [CurrencyCode, ...CurrencyCode[]]).optional(),
+    /**
+     * Accepted for backwards compatibility and then ignored: the symbol is
+     * derived from the code below, so the pair cannot disagree.
+     */
     currencySymbol: z.string().optional(),
     ga4Id: z.string().optional(),
     pixelId: z.string().optional(),
@@ -87,6 +98,16 @@ export class TenantsController {
   })
   update(@CurrentTenant() tenant: TenantDto, @Param("tenant") slug: string, @Body() body: unknown) {
     const input = tenantPatchSchema.parse(body);
+
+    // Derive the symbol from the code, overriding whatever the client sent.
+    // Switching currency does NOT convert stored amounts — there are no rates
+    // in this system — it re-denominates the workspace. That is the documented
+    // behaviour, not an oversight: a silent conversion at an unrecorded rate
+    // would make every historical figure impossible to reconcile.
+    if (input.config?.currency) {
+      input.config.currencySymbol = symbolFor(input.config.currency);
+    }
+
     // A warehouse workspace has no storefront, so `codEnabled` / `ga4Id` /
     // `pixelId` and friends describe nothing it can do. Rejecting them keeps
     // the stored config honest instead of accumulating settings that are read

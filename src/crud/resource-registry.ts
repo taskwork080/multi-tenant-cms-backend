@@ -70,6 +70,17 @@ export interface ResourceDef {
    */
   deny?: ("create" | "update" | "delete")[];
   /**
+   * Rows this resource refuses to let the generic layer rewrite, because the
+   * row has consequences the rewrite would desynchronise.
+   *
+   * A confirmed packing list is the case this exists for: it has already taken
+   * stock off the shelf, and `writeChildren` replaces a list's cartons
+   * wholesale on every PATCH — so editing one silently leaves the document and
+   * the ledger describing different shipments. Reopening is the supported way
+   * back, and it returns the stock first.
+   */
+  frozenWhen?: (row: Record<string, unknown>) => boolean;
+  /**
    * Columns the generic layer must never write, on top of the global
    * READONLY_COLUMNS (id, tenantId, createdAt, updatedAt).
    *
@@ -249,13 +260,28 @@ export const RESOURCES: Record<string, ResourceDef> = {
     flags: { open: sql`status in ('draft','in_transit')` },
     children: [{ field: "items", table: s.stockTransferItems, fk: "transferId" }],
   },
+  // Gated by inventoryInbound rather than a module of its own: a supplier only
+  // exists to be picked when receiving goods, and a workspace that cannot
+  // receive has nothing to buy from.
+  suppliers: {
+    table: s.suppliers,
+    module: "inventoryInbound",
+    capabilities: { read: "inventory.view", write: "inventory.receive" },
+    activity: { kind: "inventory", label: ["name"] },
+    searchable: ["name", "code", "contact_name", "phone", "email"],
+    flags: { active: sql`active = true` },
+  },
   "inbound-receipts": {
     table: s.inboundReceipts,
     module: "inventoryInbound",
     capabilities: { read: "inventory.view", write: "inventory.receive" }, activity: { kind: "inventory", label: ["ref"] },
     searchable: ["ref", "supplier_name", "reference_no", "warehouse_name"],
     flags: { open: sql`status = 'draft'` },
-    children: [{ field: "items", table: s.inboundReceiptItems, fk: "receiptId" }],
+    children: [
+      { field: "items", table: s.inboundReceiptItems, fk: "receiptId" },
+      // Freight, duty, clearing — the other bills on the delivery.
+      { field: "charges", table: s.inboundReceiptCharges, fk: "receiptId" },
+    ],
   },
   "cycle-counts": {
     table: s.cycleCounts,
@@ -347,6 +373,12 @@ export const RESOURCES: Record<string, ResourceDef> = {
     table: s.packingLists,
     module: "packing",
     capabilities: { write: "packing.manage" }, activity: { kind: "shipment", label: ["ref","orderCode"] },
+    // Deleting a packing list generically would leave the stock it is holding
+    // reserved by a document that no longer exists, and would orphan its
+    // movement rows. DELETE /api/:tenant/packing-lists/:id releases first.
+    deny: ["delete"],
+    // Once it has been signed off it has moved stock — see frozenWhen above.
+    frozenWhen: (row) => row.status !== "draft",
     searchable: ["ref", "order_code", "customer_name"],
     children: [
       {

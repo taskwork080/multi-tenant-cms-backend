@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gt, gte, lt, notInArray, or, sql } from "drizzle-orm";
 import {
   categories,
   customers,
@@ -9,6 +9,7 @@ import {
   products,
   returnRequests,
   shipments,
+  skus,
   stockMovements,
   inboundReceipts,
   stockTransfers,
@@ -68,8 +69,18 @@ export class DashboardService {
    * different cards, and a nullable `revenue` invites it to render "—" instead
    * of the metric a warehouse actually cares about.
    */
-  async stats(tenant: TenantDto, period: Period = "30", window: DateWindow = { from: null, to: null }) {
-    if (tenant.type === "warehouse") return this.warehouseStats(tenant, period, window);
+  async stats(
+    tenant: TenantDto,
+    period: Period = "30",
+    window: DateWindow = { from: null, to: null },
+    /**
+     * Narrows a warehouse workspace to one site. Ignored by the commerce
+     * variant, whose figures are order-derived and have no warehouse column to
+     * filter on.
+     */
+    warehouseId: string | null = null,
+  ) {
+    if (tenant.type === "warehouse") return this.warehouseStats(tenant, period, window, warehouseId);
     return this.commerceStats(tenant, period, window);
   }
 
@@ -361,6 +372,7 @@ export class DashboardService {
     tenant: TenantDto,
     period: Period = "30",
     window: DateWindow = { from: null, to: null },
+    warehouseId: string | null = null,
   ) {
     const days = period === "all" ? null : Number(period);
     const now = new Date();
@@ -374,10 +386,36 @@ export class DashboardService {
     const granularity: "day" | "month" = spanDays > 92 ? "month" : "day";
 
     return this.tdb.forTenant(tenant.id, async (tx) => {
-      /** Movement rows for one window, scoped to this tenant. */
+      /**
+       * Site filters. A warehouse group runs several sites and a manager asks
+       * about one of them; every table that knows where it happened is narrowed
+       * the same way. `packing_lists` has no warehouse column, so packing is
+       * reported group-wide whatever the filter — flagged to the client as
+       * `siteScoped: false` rather than silently pretending it was filtered.
+       */
+      const whMovements = warehouseId ? [eq(stockMovements.warehouseId, warehouseId)] : [];
+      const whLevels = warehouseId ? [eq(inventoryLevels.warehouseId, warehouseId)] : [];
+      const whReceipts = warehouseId ? [eq(inboundReceipts.warehouseId, warehouseId)] : [];
+      const whCounts = warehouseId ? [eq(cycleCounts.warehouseId, warehouseId)] : [];
+      // Packing lists now name the warehouse they ship from, so the site filter
+      // finally reaches them. Lists raised before that column existed have no
+      // warehouse and are counted group-wide only.
+      const whPacking = warehouseId ? [eq(packingLists.warehouseId, warehouseId)] : [];
+      // A transfer touches the site at either end — both legs are its business.
+      const whTransfers = warehouseId
+        ? [
+            or(
+              eq(stockTransfers.fromWarehouseId, warehouseId),
+              eq(stockTransfers.toWarehouseId, warehouseId),
+            )!,
+          ]
+        : [];
+
+      /** Movement rows for one window, scoped to this tenant and site. */
       const movementsWhere = (from: Date | null, to: Date | null) =>
         and(
           eq(stockMovements.tenantId, tenant.id),
+          ...whMovements,
           ...(from ? [gte(stockMovements.at, from)] : []),
           ...(to ? [lt(stockMovements.at, to)] : []),
         );
@@ -394,6 +432,14 @@ export class DashboardService {
             unitsOut: sql<number>`coalesce(sum(case when ${stockMovements.qty} < 0 then -${stockMovements.qty} else 0 end), 0)::int`,
             movements: sql<number>`count(*)::int`,
             activeSkus: sql<number>`count(distinct ${stockMovements.skuId})::int`,
+            // Stock that left the building without being shipped: write-offs
+            // and count corrections. The shrinkage line every 3PL is measured
+            // on, and it is invisible in a plain in/out total because it
+            // nets out against receipts.
+            shrinkage: sql<number>`coalesce(sum(case when ${stockMovements.kind} in ('scrap','adjust','count') and ${stockMovements.qty} < 0 then -${stockMovements.qty} else 0 end), 0)::int`,
+            // Distinct days with at least one movement, so throughput can be
+            // reported per working day rather than per calendar day.
+            activeDays: sql<number>`count(distinct date_trunc('day', ${stockMovements.at}))::int`,
           })
           .from(stockMovements)
           .where(movementsWhere(from, to));
@@ -402,6 +448,8 @@ export class DashboardService {
           unitsOut: row?.unitsOut ?? 0,
           movements: row?.movements ?? 0,
           activeSkus: row?.activeSkus ?? 0,
+          shrinkage: row?.shrinkage ?? 0,
+          activeDays: row?.activeDays ?? 0,
         };
       };
 
@@ -409,6 +457,18 @@ export class DashboardService {
         granularity === "month"
           ? sql<string>`to_char(${stockMovements.at}, 'YYYY-MM')`
           : sql<string>`to_char(${stockMovements.at}, 'YYYY-MM-DD')`;
+
+      /** The same bucket, over a cycle count's posting date. */
+      const countBucket =
+        granularity === "month"
+          ? sql<string>`to_char(${cycleCounts.postedAt}, 'YYYY-MM')`
+          : sql<string>`to_char(${cycleCounts.postedAt}, 'YYYY-MM-DD')`;
+
+      /** SKUs that moved at all in the window — the complement is dead stock. */
+      const movedSkus = tx
+        .select({ id: stockMovements.skuId })
+        .from(stockMovements)
+        .where(movementsWhere(cur.from, cur.to));
 
       const [
         current,
@@ -421,6 +481,13 @@ export class DashboardService {
         packing,
         series,
         warehouseSplit,
+        movementMix,
+        topMovers,
+        accuracyTrend,
+        hourly,
+        recentMovements,
+        deadStock,
+        siteThroughput,
       ] = await Promise.all([
         throughput(cur.from, cur.to),
         throughput(prev.from, prev.to),
@@ -432,6 +499,7 @@ export class DashboardService {
           .where(
             and(
               eq(inboundReceipts.tenantId, tenant.id),
+              ...whReceipts,
               ...(cur.from ? [gte(inboundReceipts.createdAt, cur.from)] : []),
               ...(cur.to ? [lt(inboundReceipts.createdAt, cur.to)] : []),
             ),
@@ -442,7 +510,7 @@ export class DashboardService {
         tx
           .select({ status: stockTransfers.status, n: sql<number>`count(*)::int` })
           .from(stockTransfers)
-          .where(eq(stockTransfers.tenantId, tenant.id))
+          .where(and(eq(stockTransfers.tenantId, tenant.id), ...whTransfers))
           .groupBy(stockTransfers.status),
 
         // Count accuracy: total absolute variance posted in the window. A
@@ -452,6 +520,7 @@ export class DashboardService {
             posted: sql<number>`count(distinct ${cycleCounts.id})::int`,
             variance: sql<number>`coalesce(sum(abs(${cycleCountItems.variance})), 0)::int`,
             linesCounted: sql<number>`count(${cycleCountItems.id})::int`,
+            exact: sql<number>`count(${cycleCountItems.id}) filter (where ${cycleCountItems.variance} = 0)::int`,
           })
           .from(cycleCounts)
           .leftJoin(cycleCountItems, eq(cycleCountItems.countId, cycleCounts.id))
@@ -459,6 +528,7 @@ export class DashboardService {
             and(
               eq(cycleCounts.tenantId, tenant.id),
               eq(cycleCounts.status, "posted"),
+              ...whCounts,
               ...(cur.from ? [gte(cycleCounts.postedAt, cur.from)] : []),
               ...(cur.to ? [lt(cycleCounts.postedAt, cur.to)] : []),
             ),
@@ -471,21 +541,25 @@ export class DashboardService {
             out: sql<number>`count(*) filter (where on_hand <= 0)::int`,
           })
           .from(inventoryLevels)
-          .where(eq(inventoryLevels.tenantId, tenant.id)),
+          .where(and(eq(inventoryLevels.tenantId, tenant.id), ...whLevels)),
 
         tx
           .select({
             onHand: sql<number>`coalesce(sum(${inventoryLevels.onHand}), 0)::int`,
             reserved: sql<number>`coalesce(sum(${inventoryLevels.reserved}), 0)::int`,
             incoming: sql<number>`coalesce(sum(${inventoryLevels.incoming}), 0)::int`,
+            // Distinct stock-holding locations, for the "SKUs per bin" density
+            // figure a slotting review starts from.
+            bins: sql<number>`count(distinct ${inventoryLevels.binLocation}) filter (where ${inventoryLevels.binLocation} is not null)::int`,
+            skus: sql<number>`count(*)::int`,
           })
           .from(inventoryLevels)
-          .where(eq(inventoryLevels.tenantId, tenant.id)),
+          .where(and(eq(inventoryLevels.tenantId, tenant.id), ...whLevels)),
 
         tx
           .select({ status: packingLists.status, n: sql<number>`count(*)::int` })
           .from(packingLists)
-          .where(eq(packingLists.tenantId, tenant.id))
+          .where(and(eq(packingLists.tenantId, tenant.id), ...whPacking))
           .groupBy(packingLists.status),
 
         tx
@@ -500,24 +574,175 @@ export class DashboardService {
           .orderBy(bucket),
 
         // Where the stock actually sits — the multi-warehouse view an
-        // e-commerce dashboard has no reason to show.
+        // e-commerce dashboard has no reason to show. Reserved and incoming
+        // come along so the client can stack committed / free / inbound in one
+        // bar instead of showing a single opaque on-hand total.
         tx
           .select({
             warehouseId: inventoryLevels.warehouseId,
             warehouse: inventoryLevels.warehouseName,
             onHand: sql<number>`coalesce(sum(${inventoryLevels.onHand}), 0)::int`,
+            reserved: sql<number>`coalesce(sum(${inventoryLevels.reserved}), 0)::int`,
+            incoming: sql<number>`coalesce(sum(${inventoryLevels.incoming}), 0)::int`,
             skus: sql<number>`count(*)::int`,
+            low: sql<number>`count(*) filter (where ${LOW_STOCK_PREDICATE} and on_hand > 0)::int`,
+            out: sql<number>`count(*) filter (where on_hand <= 0)::int`,
           })
           .from(inventoryLevels)
+          // Not narrowed by `whLevels`: this table is the site comparison, and
+          // filtering it to one site would leave a chart with a single bar.
           .where(eq(inventoryLevels.tenantId, tenant.id))
           .groupBy(inventoryLevels.warehouseId, inventoryLevels.warehouseName)
-          .orderBy(sql`2`),
+          .orderBy(sql`3 desc`),
+
+        // What kind of work the window was made of. `receive` and `deduct`
+        // heavy is a fulfilment site; `transfer_*` heavy is a hub; `adjust`
+        // heavy means the data is being corrected more than it is being moved.
+        tx
+          .select({
+            kind: stockMovements.kind,
+            moves: sql<number>`count(*)::int`,
+            units: sql<number>`coalesce(sum(abs(${stockMovements.qty})), 0)::int`,
+          })
+          .from(stockMovements)
+          .where(movementsWhere(cur.from, cur.to))
+          .groupBy(stockMovements.kind)
+          .orderBy(sql`3 desc`),
+
+        // Busiest SKUs by total handled volume — the slotting shortlist.
+        tx
+          .select({
+            skuId: stockMovements.skuId,
+            code: skus.code,
+            name: skus.name,
+            unitsIn: sql<number>`coalesce(sum(case when ${stockMovements.qty} > 0 then ${stockMovements.qty} else 0 end), 0)::int`,
+            unitsOut: sql<number>`coalesce(sum(case when ${stockMovements.qty} < 0 then -${stockMovements.qty} else 0 end), 0)::int`,
+            moves: sql<number>`count(*)::int`,
+          })
+          .from(stockMovements)
+          .innerJoin(skus, eq(skus.id, stockMovements.skuId))
+          .where(movementsWhere(cur.from, cur.to))
+          .groupBy(stockMovements.skuId, skus.code, skus.name)
+          .orderBy(sql`coalesce(sum(abs(${stockMovements.qty})), 0) desc`)
+          .limit(8),
+
+        // Accuracy over time, not just as one number: a single 97% hides
+        // whether the site is recovering or drifting.
+        tx
+          .select({
+            bucket: countBucket,
+            lines: sql<number>`count(${cycleCountItems.id})::int`,
+            variance: sql<number>`coalesce(sum(abs(${cycleCountItems.variance})), 0)::int`,
+            exact: sql<number>`count(${cycleCountItems.id}) filter (where ${cycleCountItems.variance} = 0)::int`,
+          })
+          .from(cycleCounts)
+          .leftJoin(cycleCountItems, eq(cycleCountItems.countId, cycleCounts.id))
+          .where(
+            and(
+              eq(cycleCounts.tenantId, tenant.id),
+              eq(cycleCounts.status, "posted"),
+              ...whCounts,
+              ...(cur.from ? [gte(cycleCounts.postedAt, cur.from)] : []),
+              ...(cur.to ? [lt(cycleCounts.postedAt, cur.to)] : []),
+            ),
+          )
+          .groupBy(countBucket)
+          .orderBy(countBucket),
+
+        // Throughput by hour of the working day. This is the labour-planning
+        // view — where the receiving peak sits relative to the dispatch peak.
+        // Hours are in the database's timezone, which is the site's clock.
+        tx
+          .select({
+            hour: sql<number>`extract(hour from ${stockMovements.at})::int`,
+            unitsIn: sql<number>`coalesce(sum(case when ${stockMovements.qty} > 0 then ${stockMovements.qty} else 0 end), 0)::int`,
+            unitsOut: sql<number>`coalesce(sum(case when ${stockMovements.qty} < 0 then -${stockMovements.qty} else 0 end), 0)::int`,
+            moves: sql<number>`count(*)::int`,
+          })
+          .from(stockMovements)
+          .where(movementsWhere(cur.from, cur.to))
+          .groupBy(sql`1`)
+          .orderBy(sql`1`),
+
+        // The tail of the ledger, for a live activity feed. Deliberately not
+        // windowed: "what just happened" is the question, and a range ending
+        // last month would render it empty.
+        tx
+          .select({
+            id: stockMovements.id,
+            kind: stockMovements.kind,
+            qty: stockMovements.qty,
+            refCode: stockMovements.refCode,
+            actor: stockMovements.actor,
+            at: stockMovements.at,
+            sku: skus.code,
+            skuName: skus.name,
+          })
+          .from(stockMovements)
+          .innerJoin(skus, eq(skus.id, stockMovements.skuId))
+          .where(and(eq(stockMovements.tenantId, tenant.id), ...whMovements))
+          .orderBy(sql`${stockMovements.at} desc`)
+          .limit(8),
+
+        // Stock holding a bin without moving all window. Capital and space
+        // both tied up, and nothing in the in/out totals says so.
+        tx
+          .select({
+            skus: sql<number>`count(*)::int`,
+            units: sql<number>`coalesce(sum(${inventoryLevels.onHand}), 0)::int`,
+          })
+          .from(inventoryLevels)
+          .where(
+            and(
+              eq(inventoryLevels.tenantId, tenant.id),
+              ...whLevels,
+              gt(inventoryLevels.onHand, 0),
+              notInArray(inventoryLevels.skuId, movedSkus),
+            ),
+          ),
+
+        // Per-site throughput, merged into `byWarehouse` below so one chart can
+        // rank sites by what they moved rather than by what they hold.
+        tx
+          .select({
+            warehouseId: stockMovements.warehouseId,
+            unitsIn: sql<number>`coalesce(sum(case when ${stockMovements.qty} > 0 then ${stockMovements.qty} else 0 end), 0)::int`,
+            unitsOut: sql<number>`coalesce(sum(case when ${stockMovements.qty} < 0 then -${stockMovements.qty} else 0 end), 0)::int`,
+          })
+          .from(stockMovements)
+          .where(
+            and(
+              eq(stockMovements.tenantId, tenant.id),
+              ...(cur.from ? [gte(stockMovements.at, cur.from)] : []),
+              ...(cur.to ? [lt(stockMovements.at, cur.to)] : []),
+            ),
+          )
+          .groupBy(stockMovements.warehouseId),
       ]);
 
       const byStatus = (rows: { status: string; n: number }[]) =>
         Object.fromEntries(rows.map((r) => [r.status, r.n])) as Record<string, number>;
 
-      const countRow = counts[0] ?? { posted: 0, variance: 0, linesCounted: 0 };
+      const countRow = counts[0] ?? { posted: 0, variance: 0, linesCounted: 0, exact: 0 };
+
+      /**
+       * Inventory record accuracy: the share of counted lines that matched the
+       * book figure exactly. Null when nothing was counted — no count is not
+       * an accuracy of nil.
+       *
+       * This used to be `1 - variance / lines`, which divides a count of UNITS
+       * by a count of LINES. The two are not commensurable, so the result was
+       * not a percentage of anything: a single line five units short scored the
+       * whole window at 0%, and a thousand-line count with one line 1200 units
+       * out also scored 0%. Counting matched lines is the standard definition
+       * and is the one the target on the trend chart is meaningful against;
+       * `absVariance` still carries the unit magnitude beside it, which is the
+       * severity question the ratio was never answering.
+       */
+      const accuracyOf = (exact: number, lines: number) =>
+        lines ? Math.round((exact / lines) * 100) : null;
+
+      const throughputBySite = new Map(siteThroughput.map((r) => [r.warehouseId ?? "", r]));
 
       return {
         variant: "warehouse" as const,
@@ -525,6 +750,8 @@ export class DashboardService {
         from: cur.from,
         to: cur.to,
         granularity,
+        /** Echoed so the client can tell a filtered view from a group-wide one. */
+        warehouseId,
         current,
         previous,
         inbound: {
@@ -541,24 +768,50 @@ export class DashboardService {
           posted: countRow.posted,
           linesCounted: countRow.linesCounted,
           absVariance: countRow.variance,
-          // Share of counted lines that matched the book figure. The number a
-          // warehouse manager is actually judged on.
-          accuracy: countRow.linesCounted
-            ? Math.max(0, Math.round((1 - countRow.variance / Math.max(1, countRow.linesCounted)) * 100))
-            : null,
+          /** Lines that matched the book figure exactly. */
+          exact: countRow.exact,
+          // The number a warehouse manager is actually judged on.
+          accuracy: accuracyOf(countRow.exact, countRow.linesCounted),
+          trend: accuracyTrend.map((r) => ({
+            bucket: r.bucket,
+            lines: r.lines,
+            variance: r.variance,
+            exact: r.exact,
+            accuracy: accuracyOf(r.exact, r.lines),
+          })),
         },
         packing: {
           byStatus: byStatus(packing),
           open: (byStatus(packing).draft ?? 0) + (byStatus(packing).packed ?? 0),
           shipped: byStatus(packing).shipped ?? 0,
+          // Packing lists carry a warehouse now, so the site filter reaches them.
+          siteScoped: true,
         },
         stock: {
-          ...(totals[0] ?? { onHand: 0, reserved: 0, incoming: 0 }),
+          ...(totals[0] ?? { onHand: 0, reserved: 0, incoming: 0, bins: 0, skus: 0 }),
           available: (totals[0]?.onHand ?? 0) - (totals[0]?.reserved ?? 0),
           health: stockHealth[0] ?? { inStock: 0, low: 0, out: 0 },
-          byWarehouse: warehouseSplit,
+          byWarehouse: warehouseSplit.map((w) => {
+            const moved = throughputBySite.get(w.warehouseId);
+            return {
+              ...w,
+              available: w.onHand - w.reserved,
+              unitsIn: moved?.unitsIn ?? 0,
+              unitsOut: moved?.unitsOut ?? 0,
+            };
+          }),
+          dead: deadStock[0] ?? { skus: 0, units: 0 },
         },
         daily: series,
+        movementMix,
+        topMovers,
+        // 24 rows always, so the client charts a full clock rather than only
+        // the hours that happened to have traffic.
+        hourly: Array.from({ length: 24 }, (_, h) => {
+          const row = hourly.find((r) => r.hour === h);
+          return { hour: h, unitsIn: row?.unitsIn ?? 0, unitsOut: row?.unitsOut ?? 0, moves: row?.moves ?? 0 };
+        }),
+        recentMovements,
       };
     });
   }

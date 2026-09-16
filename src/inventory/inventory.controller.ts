@@ -4,13 +4,18 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../db/db.tokens";
 import {
+  inboundReceiptCharges,
+  inboundReceiptItems,
+  inboundReceipts,
   inventoryLevels,
   products,
   skus,
   stockBatches,
   stockMovements,
+  suppliers,
   warehouses,
 } from "../db/schema";
+import { allocateCharges, costInputSchema, landedFor, normalizeCost, type ChargeBasis } from "./purchase-cost";
 import { TenantDb } from "../db/tenant-db.service";
 import { parseDateWindow } from "../common/date-window";
 import { RequireCapability } from "../auth/decorators";
@@ -38,9 +43,20 @@ const patchSkuSchema = z.object({
 const receiveLineSchema = z.object({
   skuId: z.string().uuid(),
   qty: z.number().int().positive(),
-  unitCost: z.number().nonnegative().optional(),
+  ...costInputSchema,
   expiryDate: z.string().optional(),
   batchRef: z.string().optional(),
+});
+
+/**
+ * The other bills on a delivery. Labelled rather than a fixed set of columns:
+ * every trade has its own charges, and a freight/duty/other trio would push
+ * everything else into "other".
+ */
+const chargeSchema = z.object({
+  label: z.string().trim().max(120).optional(),
+  amount: z.number().nonnegative(),
+  note: z.string().optional(),
 });
 
 /**
@@ -52,11 +68,14 @@ const receiveLineSchema = z.object({
 const receiveSchema = z.union([
   z.object({
     warehouseId: z.string().uuid(),
+    supplierId: z.string().uuid().optional(),
     supplierName: z.string().optional(),
     manufacturerId: z.string().uuid().optional(),
     referenceNo: z.string().optional(),
     photoUrl: z.string().optional(),
     note: z.string().optional(),
+    charges: z.array(chargeSchema).optional(),
+    chargeBasis: z.enum(["value", "qty"]).optional(),
     lines: z.array(receiveLineSchema).min(1),
   }),
   z.object({
@@ -408,7 +427,7 @@ export class InventoryController {
   @ApiOperation({
     summary: "Receive stock into a warehouse",
     description:
-      "Raises on-hand and appends a `receive` movement per line. Accepts the legacy flat {productId, quantity} body, which resolves to the product's default SKU.",
+      "Raises on-hand, writes a goods-received note recording the supplier and what each line cost, and appends a `receive` movement per line. Accepts the legacy flat {productId, quantity} body, which resolves to the product's default SKU.",
   })
   async receive(@CurrentUser() user: AuthUser, @CurrentTenant() tenant: TenantDto, @Body() body: unknown) {
     const input = receiveSchema.parse(body);
@@ -424,6 +443,20 @@ export class InventoryController {
               },
             ];
 
+      /**
+       * Write the goods-received note FIRST, so the movements below can point
+       * at it.
+       *
+       * This endpoint used to parse `supplierName`, `referenceNo` and every
+       * line's `unitCost` and then write only the movement — no receipt row at
+       * all. Every price and supplier a user typed into the Receive Stock
+       * drawer was discarded at the door, which is why no purchase history
+       * existed to report on. The note is the record of what was bought, from
+       * whom, and at what price; the ledger only ever recorded that quantity
+       * went up.
+       */
+      const receipt = await this.recordPurchase(tx, tenant.id, input, lines);
+
       const touched: string[] = [];
       const levels = [];
       for (const line of lines) {
@@ -433,6 +466,10 @@ export class InventoryController {
           kind: "receive",
           qty: line.qty,
           refType: "receipt",
+          // The ledger row now resolves to the note that priced it, so a
+          // movement can be traced back to its supplier and invoice.
+          refId: receipt?.id,
+          refCode: receipt?.ref,
           reason: "manual_receive",
           note: "note" in input ? input.note : undefined,
         });
@@ -450,11 +487,143 @@ export class InventoryController {
       await this.inventory.writeActivity(tx, tenant.id, {
         actor: actorOf(user),
         action: "Received stock",
-        target: `${lines.reduce((n, l) => n + l.qty, 0)} units`,
+        target: receipt
+          ? `${receipt.ref} · ${lines.reduce((n, l) => n + l.qty, 0)} units`
+          : `${lines.reduce((n, l) => n + l.qty, 0)} units`,
       });
 
-      return { levels, warnings: await this.inventory.lowStockWarnings(tx, tenant.id, touched) };
+      return {
+        levels,
+        receipt,
+        warnings: await this.inventory.lowStockWarnings(tx, tenant.id, touched),
+      };
     });
+  }
+
+  /**
+   * Persists a received goods note for a direct receive, so the purchase — its
+   * supplier, its date and its per-line prices — survives the transaction.
+   *
+   * Created already `received`: unlike the drafting flow in
+   * ReceiptsController, the goods are physically here by definition, and this
+   * method is called from inside the same transaction that raises on-hand.
+   * `receivedAt` is therefore the purchase timestamp the price log sorts by.
+   *
+   * Returns null only when the tenant's warehouse row has vanished under us,
+   * which `applyMovement` will fail on anyway — receiving keeps working, it
+   * just loses the note rather than the stock.
+   */
+  private async recordPurchase(
+    tx: Db,
+    tenantId: string,
+    input: {
+      warehouseId: string;
+      supplierId?: string;
+      supplierName?: string;
+      manufacturerId?: string;
+      referenceNo?: string;
+      photoUrl?: string;
+      note?: string;
+      charges?: { label?: string; amount: number; note?: string }[];
+      chargeBasis?: ChargeBasis;
+    },
+    lines: { skuId: string; qty: number; unitCost?: number; lineTotal?: number; costMode?: "unit" | "total"; expiryDate?: string; batchRef?: string }[],
+  ) {
+    const [warehouse] = await tx
+      .select()
+      .from(warehouses)
+      .where(and(eq(warehouses.tenantId, tenantId), eq(warehouses.id, input.warehouseId)))
+      .limit(1);
+    if (!warehouse) return null;
+
+    // A supplier picked by id names itself; free text is still accepted so the
+    // legacy body and any caller predating the supplier list keep working.
+    let supplierName = input.supplierName ?? "";
+    if (input.supplierId) {
+      const [supplier] = await tx
+        .select({ name: suppliers.name })
+        .from(suppliers)
+        .where(and(eq(suppliers.tenantId, tenantId), eq(suppliers.id, input.supplierId)))
+        .limit(1);
+      if (!supplier) throw new NotFoundException("Supplier not found");
+      supplierName = supplier.name;
+    }
+
+    // Zero-value bills are noise on the document; drop them before they become
+    // rows nobody can explain.
+    const charges = (input.charges ?? []).filter((c) => c.amount > 0);
+    const chargesTotal = Math.round(charges.reduce((n, c) => n + c.amount, 0) * 100) / 100;
+    const basis: ChargeBasis = input.chargeBasis ?? "value";
+
+    const ref = await this.inventory.nextRef(tx, tenantId, "inbound_receipts", "GRN");
+    const [receipt] = await tx
+      .insert(inboundReceipts)
+      .values({
+        tenantId,
+        ref,
+        warehouseId: warehouse.id,
+        warehouseName: warehouse.name,
+        supplierId: input.supplierId,
+        supplierName,
+        manufacturerId: input.manufacturerId,
+        referenceNo: input.referenceNo,
+        photoUrl: input.photoUrl,
+        note: input.note,
+        chargesTotal,
+        chargeBasis: basis,
+        status: "received",
+        receivedAt: new Date(),
+      })
+      .returning();
+
+    // The extra bills, each kept as its own labelled row.
+    for (const [i, charge] of charges.entries()) {
+      await tx.insert(inboundReceiptCharges).values({
+        tenantId,
+        receiptId: receipt.id,
+        label: charge.label?.trim() || "Other cost",
+        amount: charge.amount,
+        note: charge.note,
+        sort: i,
+      });
+    }
+
+    // Prices first, because the allocation weighs lines by what they cost.
+    const costs = lines.map((line) => normalizeCost(line.qty, line));
+    const shares = allocateCharges(
+      lines.map((line, i) => ({ qty: line.qty, lineTotal: costs[i].lineTotal })),
+      chargesTotal,
+      basis,
+    );
+
+    for (const [i, line] of lines.entries()) {
+      const sku = await this.inventory.resolveSku(tx, tenantId, { skuId: line.skuId });
+      if (!sku) throw new NotFoundException(`SKU ${line.skuId} not found`);
+      const cost = costs[i];
+      const landed = landedFor(line.qty, cost.lineTotal, shares[i]);
+      await tx.insert(inboundReceiptItems).values({
+        tenantId,
+        receiptId: receipt.id,
+        skuId: sku.id,
+        skuCode: sku.code,
+        name: sku.name,
+        qty: line.qty,
+        // Received in full in the same breath — this path has no partial
+        // arrival, so leaving receivedQty at 0 would misreport the note.
+        receivedQty: line.qty,
+        unitCost: cost.unitCost,
+        lineTotal: cost.lineTotal,
+        costMode: cost.costMode,
+        allocatedCharge: shares[i],
+        landedTotal: landed.landedTotal,
+        landedUnitCost: landed.landedUnitCost,
+        expiryDate: line.expiryDate,
+        batchRef: line.batchRef,
+        sort: i,
+      });
+    }
+
+    return receipt;
   }
 
   @Post("adjust")
