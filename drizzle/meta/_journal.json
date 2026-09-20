@@ -125,27 +125,41 @@
       "idx": 17,
       "version": "7",
       "when": 1786900000000,
-      "tag": "0016_purchase_prices",
+      "tag": "0016_tenant_id_without_auth_schema",
       "breakpoints": true
     },
     {
       "idx": 18,
       "version": "7",
-      "when": 1786950000000,
-      "tag": "0017_default_currency_bdt",
+      "when": 1787000000000,
+      "tag": "0017_storefront_config_rls",
       "breakpoints": true
     },
     {
       "idx": 19,
       "version": "7",
-      "when": 1787000000000,
-      "tag": "0018_packing_inventory",
+      "when": 1787200000000,
+      "tag": "0016_purchase_prices",
       "breakpoints": true
     },
     {
       "idx": 20,
       "version": "7",
-      "when": 1787100000000,
+      "when": 1787300000000,
+      "tag": "0017_default_currency_bdt",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787400000000,
+      "tag": "0018_packing_inventory",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1787500000000,
       "tag": "0019_landed_cost",
       "breakpoints": true
     }

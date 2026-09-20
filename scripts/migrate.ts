@@ -2,6 +2,15 @@ import "./lib/env-target";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
+import {
+  describeOutOfOrder,
+  describeSilentSkips,
+  findOutOfOrder,
+  findSilentlySkipped,
+  loadMigrationDigests,
+} from "./lib/migration-guard";
+
+const MIGRATIONS_FOLDER = "./drizzle";
 
 // Migrations need DDL; the API deliberately does not have it. In production
 // DATABASE_URL points at the app_api role from drizzle/0011_app_api_role.sql,
@@ -19,11 +28,55 @@ async function main() {
   }
   const client = postgres(url, { prepare: false, max: 1 });
   const db = drizzle(client);
-  // Relative to the working directory, which is the repo root for both
-  // `npm run db:migrate*` and a host's pre-deploy command.
-  await migrate(db, { migrationsFolder: "./drizzle" });
-  console.log("Migrations applied.");
-  await client.end();
+  try {
+    await preflight(client);
+    // Relative to the working directory, which is the repo root for both
+    // `npm run db:migrate*` and a host's pre-deploy command.
+    await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+    console.log("Migrations applied.");
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * Refuses to migrate when drizzle would skip a migration without saying so.
+ *
+ * See scripts/lib/migration-guard.ts for why this is possible at all. Running
+ * before migrate() matters: the skip is not an error to drizzle, so by the time
+ * anything looks wrong the run has either succeeded with missing DDL or failed
+ * somewhere unrelated to the actual cause.
+ */
+async function preflight(client: postgres.Sql): Promise<void> {
+  const entries = loadMigrationDigests(MIGRATIONS_FOLDER);
+
+  const outOfOrder = findOutOfOrder(entries);
+  if (outOfOrder.length > 0) {
+    throw new Error(describeOutOfOrder(outOfOrder));
+  }
+
+  // A database that has never been migrated has no drizzle schema at all, and
+  // nothing to check. 3F000 = no such schema, 42P01 = no such table.
+  let rows: { hash: string; created_at: string }[];
+  try {
+    rows = await client<{ hash: string; created_at: string }[]>`
+      select "hash", "created_at" from drizzle.__drizzle_migrations
+    `;
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "3F000" || code === "42P01") return;
+    throw err;
+  }
+  if (rows.length === 0) return;
+
+  // created_at is bigint, which postgres.js hands back as a string.
+  const watermark = Math.max(...rows.map((row) => Number(row.created_at)));
+  const applied = new Set(rows.map((row) => row.hash));
+
+  const skipped = findSilentlySkipped(entries, applied, watermark);
+  if (skipped.length > 0) {
+    throw new Error(describeSilentSkips(skipped, watermark));
+  }
 }
 
 main().catch((err) => {
